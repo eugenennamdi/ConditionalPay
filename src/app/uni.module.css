@@ -462,6 +462,21 @@
 .btnCta:active { transform: scale(0.99); }
 .btnCta:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn, .connectPill, .btnCta, .tab { transition: none; }
+  .spinner { animation-duration: 2s; }
 }

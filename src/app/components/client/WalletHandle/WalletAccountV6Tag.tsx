@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { hash, json, num, shortString, validateAndParseAddress, type STRK20_ACTION } from "starknet";
 import styles from "../../../uni.module.css";
 import * as constants from "@/utils/constants";
@@ -90,7 +90,7 @@ function balancesToResult(raw: any): ActionResult {
     return {
       status: "ok",
       title: "Privacy Not Initialized (NOT_REGISTERED)",
-      note: "This wallet has not registered its STRK20 viewing key with the privacy pool yet. Initiating your first Shield (Deposit) will register the wallet and initialize private note management.",
+      note: "Privacy is not initialized for this account. Initialize STRK20 privacy from your supported wallet, then return here.",
     };
   }
   const arr = Array.isArray(r) ? r : null;
@@ -190,6 +190,11 @@ export default function WalletAccountV6Tag() {
   const [lastTxBlock, setLastTxBlock] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
 
+  // Synchronous lock and visible state tracking to prevent duplicate submissions
+  const isSubmittingRef = useRef<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submittingPhase, setSubmittingPhase] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isStrk20Network) return;
     const provider = constants.myFrontendProviders[myFrontendProviderIndex];
@@ -230,48 +235,65 @@ export default function WalletAccountV6Tag() {
     setResult: (r: ActionResult) => void,
     amountLabel: string
   ): Promise<string | undefined> {
-    if (!myWalletAccount) {
-      setResult(errorResult("No WalletAccount available."));
+    // Synchronous lock check - reject concurrent clicks immediately
+    if (isSubmittingRef.current) {
+      console.warn("Action already in progress, blocking duplicate invocation.");
       return undefined;
     }
-    let txH: string;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    setSubmittingPhase("Proving & requesting wallet approval…");
+
     try {
-      const r = await myWalletAccount.strk20InvokeTransaction(actions);
-      txH = r.transaction_hash;
-    } catch (error: any) {
-      setResult(errorResult(error?.message ?? error?.toString?.() ?? String(error)));
-      return undefined;
-    }
-    setResult({
-      status: "pending",
-      title: "Waiting for confirmation…",
-      rows: [
-        { label: "Amount", value: amountLabel },
-        { label: "Transaction", value: shortHex(txH), hash: txH },
-      ],
-    });
-    // myWalletAccount.provider is fixed at connect time (Sepolia) and can point at the
-    // wrong network; use the frontend provider that tracks the current network instead.
-    const provider = constants.myFrontendProviders[myFrontendProviderIndex];
-    try {
-      const txR = await provider.waitForTransaction(txH, {
-        retries: 400,
-        retryInterval: 3000,
-      });
-      const r = (txR as any)?.value ?? txR;
-      if (typeof r?.block_number === "number") {
-        setLastTxBlock(r.block_number);
+      if (!myWalletAccount) {
+        setResult(errorResult("No WalletAccount available."));
+        return undefined;
       }
-      setResult(receiptToResult(txR, txH, amountLabel));
-    } catch (error: any) {
+      let txH: string;
+      try {
+        const r = await myWalletAccount.strk20InvokeTransaction(actions);
+        txH = r.transaction_hash;
+      } catch (error: any) {
+        setResult(errorResult(error?.message ?? error?.toString?.() ?? String(error)));
+        return undefined;
+      }
+      setSubmittingPhase("Waiting for L2 confirmation…");
       setResult({
-        status: "error",
-        title: "Could not confirm transaction",
-        rows: [{ label: "Transaction", value: shortHex(txH), hash: txH }],
-        note: error?.message ?? error?.toString?.() ?? String(error),
+        status: "pending",
+        title: "Waiting for confirmation…",
+        rows: [
+          { label: "Amount", value: amountLabel },
+          { label: "Transaction", value: shortHex(txH), hash: txH },
+        ],
       });
+      // myWalletAccount.provider is fixed at connect time (Sepolia) and can point at the
+      // wrong network; use the frontend provider that tracks the current network instead.
+      const provider = constants.myFrontendProviders[myFrontendProviderIndex];
+      try {
+        const txR = await provider.waitForTransaction(txH, {
+          retries: 400,
+          retryInterval: 3000,
+        });
+        const r = (txR as any)?.value ?? txR;
+        if (typeof r?.block_number === "number") {
+          setLastTxBlock(r.block_number);
+        }
+        setResult(receiptToResult(txR, txH, amountLabel));
+        return txH;
+      } catch (error: any) {
+        setResult({
+          status: "error",
+          title: "Could not confirm transaction",
+          rows: [{ label: "Transaction", value: shortHex(txH), hash: txH }],
+          note: error?.message ?? error?.toString?.() ?? String(error),
+        });
+        return undefined;
+      }
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+      setSubmittingPhase(null);
     }
-    return txH;
   }
 
   // Deploy a fresh echo-helper instance (StrkInvokeHelper) on the current network via
@@ -322,12 +344,16 @@ export default function WalletAccountV6Tag() {
   // Query the private (shielded) balances of ALL tokens held in the pool - empty array
   // means "all shielded tokens". Read via the WalletAccountV6 instance method.
   const handleBalances = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    setSubmittingPhase("Reading shielded balances…");
     setResultBalances(null);
-    if (!myWalletAccount) {
-      setResultBalances(errorResult("No WalletAccount available."));
-      return;
-    }
     try {
+      if (!myWalletAccount) {
+        setResultBalances(errorResult("No WalletAccount available."));
+        return;
+      }
       const r = await myWalletAccount.strk20Balances([]);
       setResultBalances(balancesToResult(r));
     } catch (error: any) {
@@ -336,11 +362,15 @@ export default function WalletAccountV6Tag() {
         setResultBalances({
           status: "ok",
           title: "Privacy Not Initialized (NOT_REGISTERED)",
-          note: "This account has not yet registered its viewing key in the STRK20 privacy pool. Executing your first Shield (Deposit) will register the wallet and initialize your private account.",
+          note: "Privacy is not initialized for this account. Initialize STRK20 privacy from your supported wallet, then return here.",
         });
       } else {
         setResultBalances(errorResult(msg));
       }
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+      setSubmittingPhase(null);
     }
   };
 
@@ -535,11 +565,11 @@ export default function WalletAccountV6Tag() {
     TabKey,
     { label: string; value: string; token: string; hint: string; cta: string; onRun: () => void; result: ActionResult | null; disabled: boolean }
   > = {
-    shield: { label: "You're shielding", value: "10", token: "STRK", hint: "Deposit into the privacy pool", cta: "Shield", onRun: handleShield, result: resultShield, disabled: !isStrk20Network },
-    send: { label: "You're sending - to self", value: "1", token: "STRK", hint: "Private in-pool transfer", cta: "Self transfer", onRun: handleSelfTransfer, result: resultTransfer, disabled: !isStrk20Network },
-    unshield: { label: "You're unshielding", value: "1", token: "STRK", hint: "Withdraw to your account", cta: "Unshield", onRun: handleUnshield, result: resultUnshield, disabled: !isStrk20Network },
-    echo: { label: "Echo invoke round-trip", value: "5", token: "STRK", hint: "Withdraw → helper → refill open note", cta: "Run echo", onRun: handleComplex, result: resultComplex, disabled: !isStrk20Network || !hasEchoHelper },
-    balances: { label: "Shielded balances", value: "All", token: "tokens", hint: "Read your private pool balances", cta: "Query balances", onRun: handleBalances, result: resultBalances, disabled: !isStrk20Network },
+    shield: { label: "You're shielding", value: "10", token: "STRK", hint: "Deposit into the privacy pool", cta: "Shield", onRun: handleShield, result: resultShield, disabled: !isStrk20Network || isSubmitting },
+    send: { label: "You're sending - to self", value: "1", token: "STRK", hint: "Private in-pool transfer", cta: "Self transfer", onRun: handleSelfTransfer, result: resultTransfer, disabled: !isStrk20Network || isSubmitting },
+    unshield: { label: "You're unshielding", value: "1", token: "STRK", hint: "Withdraw to your account", cta: "Unshield", onRun: handleUnshield, result: resultUnshield, disabled: !isStrk20Network || isSubmitting },
+    echo: { label: "Echo invoke round-trip", value: "5", token: "STRK", hint: "Withdraw → helper → refill open note", cta: "Run echo", onRun: handleComplex, result: resultComplex, disabled: !isStrk20Network || !hasEchoHelper || isSubmitting },
+    balances: { label: "Shielded balances", value: "All", token: "tokens", hint: "Read your private pool balances", cta: "Query balances", onRun: handleBalances, result: resultBalances, disabled: !isStrk20Network || isSubmitting },
   };
   const active = CONFIG[tab];
 
@@ -552,6 +582,7 @@ export default function WalletAccountV6Tag() {
             key={t.key}
             className={`${styles.tab} ${tab === t.key ? styles.tabActive : ""}`}
             onClick={() => setTab(t.key)}
+            disabled={isSubmitting}
           >
             {t.label}
           </button>
@@ -620,7 +651,7 @@ export default function WalletAccountV6Tag() {
           </div>
           <button
             className={`${styles.btn} ${styles.btnGreen} ${styles.btnBlock}`}
-            disabled={deploying}
+            disabled={deploying || isSubmitting}
             onClick={handleDeployHelper}
           >
             {deploying ? "Deploying…" : `Deploy echo helper (${networkName})`}
@@ -632,7 +663,14 @@ export default function WalletAccountV6Tag() {
       {/* Primary CTA - connect prompt until a wallet is connected. */}
       {isConnected ? (
         <button className={styles.btnCta} disabled={active.disabled} onClick={active.onRun}>
-          {active.cta}
+          {isSubmitting ? (
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+              <span className={styles.spinner} />
+              <span>{submittingPhase ?? "Processing…"}</span>
+            </span>
+          ) : (
+            active.cta
+          )}
         </button>
       ) : (
         <SelectWallet variant="ctaBig" />

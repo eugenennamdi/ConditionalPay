@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node test/regression-duplicate-guard.test.mjs"
   },
   "dependencies": {
     "@starknet-io/get-starknet-discovery": "6.0.4",
