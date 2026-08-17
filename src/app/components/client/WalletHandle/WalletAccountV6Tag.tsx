@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { hash, json, num, shortString, validateAndParseAddress } from "starknet";
-import type { WALLET_API } from "@starknet-io/types-js";
+import { hash, json, num, shortString, validateAndParseAddress, type STRK20_ACTION } from "starknet";
 import styles from "../../../uni.module.css";
 import * as constants from "@/utils/constants";
 import { useStoreWallet } from "../../Wallet/walletContext";
@@ -87,6 +86,13 @@ function receiptToResult(txR: any, txH: string, amountLabel: string): ActionResu
 // Turn the shielded-balances response into a token → amount list.
 function balancesToResult(raw: any): ActionResult {
   const r = raw?.value ?? raw;
+  if (r === "NOT_REGISTERED" || (typeof r === "string" && r.includes("NOT_REGISTERED"))) {
+    return {
+      status: "ok",
+      title: "Privacy Not Initialized (NOT_REGISTERED)",
+      note: "This wallet has not registered its STRK20 viewing key with the privacy pool yet. Initiating your first Shield (Deposit) will register the wallet and initialize private note management.",
+    };
+  }
   const arr = Array.isArray(r) ? r : null;
   if (arr && arr.length) {
     const strk = (() => {
@@ -121,6 +127,9 @@ function balancesToResult(raw: any): ActionResult {
       title: "No shielded balances",
       note: "This account holds nothing in the privacy pool yet.",
     };
+  }
+  if (typeof r === "string") {
+    return { status: "ok", title: "Shielded balances", note: r };
   }
   // Unknown shape - never hide data; fall back to formatted JSON.
   return { status: "ok", title: "Shielded balances", note: json.stringify(r, undefined, 2) };
@@ -177,6 +186,31 @@ export default function WalletAccountV6Tag() {
   const [deploying, setDeploying] = useState<boolean>(false);
   // Active action tab (Umbra-style single-action interface).
   const [tab, setTab] = useState<TabKey>("shield");
+  // Block maturity tracker for STRK20 notes (requires latestBlock - lastTxBlock >= 10)
+  const [lastTxBlock, setLastTxBlock] = useState<number | null>(null);
+  const [currentBlock, setCurrentBlock] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isStrk20Network) return;
+    const provider = constants.myFrontendProviders[myFrontendProviderIndex];
+    if (!provider) return;
+
+    let mounted = true;
+    const updateBlock = async () => {
+      try {
+        const b = await provider.getBlockNumber();
+        if (mounted) setCurrentBlock(b);
+      } catch {
+        /* ignore polling errors */
+      }
+    };
+    updateBlock();
+    const timer = setInterval(updateBlock, 6000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [myFrontendProviderIndex, isStrk20Network]);
 
   const getWAchainId = () => {
     myWalletAccount?.provider
@@ -192,7 +226,7 @@ export default function WalletAccountV6Tag() {
   // wait for the receipt (privacy-pool txs verify a STARK proof on-chain - long budget).
   // Returns the tx hash on success, or undefined on error.
   async function submit(
-    actions: WALLET_API.STRK20_ACTION[],
+    actions: STRK20_ACTION[],
     setResult: (r: ActionResult) => void,
     amountLabel: string
   ): Promise<string | undefined> {
@@ -224,6 +258,10 @@ export default function WalletAccountV6Tag() {
         retries: 400,
         retryInterval: 3000,
       });
+      const r = (txR as any)?.value ?? txR;
+      if (typeof r?.block_number === "number") {
+        setLastTxBlock(r.block_number);
+      }
       setResult(receiptToResult(txR, txH, amountLabel));
     } catch (error: any) {
       setResult({
@@ -293,13 +331,22 @@ export default function WalletAccountV6Tag() {
       const r = await myWalletAccount.strk20Balances([]);
       setResultBalances(balancesToResult(r));
     } catch (error: any) {
-      setResultBalances(errorResult(error?.message ?? error?.toString?.() ?? String(error)));
+      const msg = error?.message ?? error?.toString?.() ?? String(error);
+      if (msg.includes("NOT_REGISTERED") || msg.includes("not registered")) {
+        setResultBalances({
+          status: "ok",
+          title: "Privacy Not Initialized (NOT_REGISTERED)",
+          note: "This account has not yet registered its viewing key in the STRK20 privacy pool. Executing your first Shield (Deposit) will register the wallet and initialize your private account.",
+        });
+      } else {
+        setResultBalances(errorResult(msg));
+      }
     }
   };
 
   const handleShield = async () => {
     setResultShield(null);
-    const actions: WALLET_API.STRK20_ACTION[] = [
+    const actions: STRK20_ACTION[] = [
       { type: "deposit", token: TOKEN, amount: num.toHex(TEN_STRK) },
     ];
     await submit(actions, setResultShield, "10 STRK");
@@ -311,7 +358,7 @@ export default function WalletAccountV6Tag() {
       setResultUnshield(errorResult("Connect a wallet first (recipient = connected account)."));
       return;
     }
-    const actions: WALLET_API.STRK20_ACTION[] = [
+    const actions: STRK20_ACTION[] = [
       { type: "withdraw", token: TOKEN, amount: num.toHex(ONE_STRK), recipient: connectedAddress },
     ];
     await submit(actions, setResultUnshield, "1 STRK");
@@ -323,7 +370,7 @@ export default function WalletAccountV6Tag() {
       setResultTransfer(errorResult("Connect a wallet first (recipient = connected account)."));
       return;
     }
-    const actions: WALLET_API.STRK20_ACTION[] = [
+    const actions: STRK20_ACTION[] = [
       { type: "transfer", token: TOKEN, amount: num.toHex(ONE_STRK), recipient: connectedAddress },
     ];
     await submit(actions, setResultTransfer, "1 STRK");
@@ -342,7 +389,7 @@ export default function WalletAccountV6Tag() {
     const helper = num.toHex(echoHelperAddr);
     // "OPEN" / ${poolAddress} / ${openNoteIds[0]} are literal placeholder strings the
     // wallet substitutes during assembly - they must NOT be hex-normalized.
-    const actions: WALLET_API.STRK20_ACTION[] = [
+    const actions: STRK20_ACTION[] = [
       { type: "withdraw", token: TOKEN, amount: num.toHex(FIVE_STRK), recipient: helper },
       { type: "transfer", token: TOKEN, amount: "OPEN", recipient: connectedAddress },
       {
@@ -537,6 +584,26 @@ export default function WalletAccountV6Tag() {
           {networkName ?? "Unsupported"}
         </span>
       </div>
+
+      {/* Note maturity readiness indicator (STRK20 requires latestBlock - lastTxBlock >= 10) */}
+      {lastTxBlock !== null && currentBlock !== null && (
+        <div className={styles.feeRow}>
+          <span>Note Readiness</span>
+          <span className={styles.feeVal}>
+            {currentBlock - lastTxBlock >= 10 ? (
+              <span className={styles.netOk}>
+                <span className={`${styles.netDot} ${styles.netOkDot}`} />
+                Mature ({currentBlock - lastTxBlock} blocks elapsed &ge; 10) — Ready to Prove
+              </span>
+            ) : (
+              <span className={styles.netBad}>
+                <span className={`${styles.netDot} ${styles.netBadDot}`} />
+                Maturing ({Math.max(0, currentBlock - lastTxBlock)}/10 blocks · Block #{lastTxBlock} &rarr; #{currentBlock})
+              </span>
+            )}
+          </span>
+        </div>
+      )}
 
       {!isStrk20Network && (
         <div className={styles.warn}>

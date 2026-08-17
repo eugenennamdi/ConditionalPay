@@ -76,7 +76,7 @@ export default function Page() {
           Repo
         </a>
         <span className={styles.footerDot}>·</span>
-        <span>Powered by Starknet.js v10.4.0</span>
+        <span>Powered by Starknet.js v10.7.0</span>
       </footer>
     </div>
   );

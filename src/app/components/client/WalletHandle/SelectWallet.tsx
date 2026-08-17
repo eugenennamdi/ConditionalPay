@@ -63,16 +63,23 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
   // the zustand store with a WalletAccountV6 + account/chain/permissions.
   async function handleSelectedWallet(selectedWallet: WalletWithStarknetFeatures) {
     setMyWallet(selectedWallet); // zustand
-    console.log("Trying to connect wallet=", selectedWallet);
+    
+    // Query supported specifications for capability detection
+    let supportedSpecsList: string[] = [];
+    try {
+      const specs = await walletV6.supportedSpecs(selectedWallet);
+      if (Array.isArray(specs)) supportedSpecsList = specs;
+    } catch {
+      supportedSpecsList = [];
+    }
+
     const myWA = await WalletAccountV6.connect(myFrontendProviders[2], selectedWallet);
     setMyWalletAccount(myWA);
-    console.log("WalletAccount created=", myWA);
     const result = await walletV6.requestAccounts(selectedWallet);
     if (typeof (result) == "string") {
       console.log("This Wallet is not compatible.");
       return;
     }
-    console.log("Current account addr =", result);
     if (Array.isArray(result)) {
       const addr = validateAndParseAddress(result[0]);
       setAddressAccount(addr); // zustand
@@ -83,9 +90,8 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
       const chainId = (await walletV6.requestChainId(selectedWallet)) as string;
       setChain(chainId);
       setCurrentFrontendProviderIndex(chainId === SNconstants.StarknetChainId.SN_MAIN ? 0 : 2);
-      console.log("change Provider index to :", myFrontendProviderIndex);
     }
-    setWalletApi(await walletV6.supportedSpecs(selectedWallet));
+    setWalletApi(supportedSpecsList);
   }
 
   // Open the wallet picker so the user can choose (Ready, Xverse, ...).
