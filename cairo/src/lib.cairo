@@ -1,6 +1,7 @@
 use starknet::ContractAddress;
 
-// Must match privacy::objects::OpenNoteDeposit (positional Serde).
+/// OpenNoteDeposit matches the STRK20 pool's expected positional Serde structure for note
+/// settlement.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct OpenNoteDeposit {
     pub note_id: felt252,
@@ -8,92 +9,133 @@ pub struct OpenNoteDeposit {
     pub amount: u128,
 }
 
-#[starknet::interface]
-pub trait IErc20<TState> {
-    fn balance_of(self: @TState, account: ContractAddress) -> u256;
-    fn approve(ref self: TState, spender: ContractAddress, amount: u256) -> bool;
+/// Lifecycle states for a ConditionalPay escrow.
+pub mod payment_state {
+    pub const UNINITIALIZED: u8 = 0;
+    pub const ACTIVE: u8 = 1;
+    pub const CLAIMED: u8 = 2;
+    pub const REFUNDED: u8 = 3;
+}
+
+/// Domain separation constants for Poseidon hashing across Cairo and TypeScript SDK.
+pub mod domains {
+    pub const CONDITIONALPAY_CLAIM_V1: felt252 = 'CONDITIONALPAY_CLAIM_V1';
+    pub const CONDITIONALPAY_REFUND_V1: felt252 = 'CONDITIONALPAY_REFUND_V1';
+    pub const CONDITIONALPAY_PAYMENT_V1: felt252 = 'CONDITIONALPAY_PAYMENT_V1';
+}
+
+/// Stored payment record (no creator or claimant addresses stored).
+#[derive(Drop, Serde, Copy, starknet::Store, PartialEq, Debug)]
+pub struct Payment {
+    pub token: ContractAddress,
+    pub amount: u128,
+    pub hashlock: felt252,
+    pub refund_hash: felt252,
+    pub claim_after: u64,
+    pub expires_at: u64,
+    pub approver: ContractAddress,
+    pub approved: bool,
+    pub state: u8,
+}
+
+/// Typed parameters for creating a conditional payment.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct CreateParams {
+    pub token: ContractAddress,
+    pub amount: u128,
+    pub hashlock: felt252,
+    pub refund_hash: felt252,
+    pub claim_after: u64,
+    pub expires_at: u64,
+    pub approver: ContractAddress,
+    pub nonce: felt252,
+}
+
+/// Typed parameters for claiming a conditional payment.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct ClaimParams {
+    pub payment_id: felt252,
+    pub claim_preimage: felt252,
+    pub note_id: felt252,
+}
+
+/// Typed parameters for refunding an expired conditional payment.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct RefundParams {
+    pub payment_id: felt252,
+    pub refund_preimage: felt252,
+    pub note_id: felt252,
+}
+
+/// Action enum deserialized by privacy_invoke.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub enum ConditionalPayAction {
+    Create: CreateParams,
+    Claim: ClaimParams,
+    Refund: RefundParams,
 }
 
 #[starknet::interface]
-pub trait IStrkInvokeHelper<TState> {
-    // Called by the privacy pool via selector!("privacy_invoke").
-    fn privacy_invoke(
-        ref self: TState,
-        token: ContractAddress, // STRK (literal felt in calldata)
-        pool_address: ContractAddress, // wallet placeholder: poolAddress
-        note_id: felt252 // wallet placeholder: openNoteIds[0]
-    ) -> Span<OpenNoteDeposit>;
-    fn get_invoke_count(self: @TState) -> u64;
-    fn get_last_note_id(self: @TState) -> felt252;
+pub trait IConditionalPay<TState> {
+    fn get_strk20_pool(self: @TState) -> ContractAddress;
+    fn get_payment(self: @TState, payment_id: felt252) -> Payment;
+    fn get_locked_by_token(self: @TState, token: ContractAddress) -> u128;
+    fn privacy_invoke(ref self: TState, action: ConditionalPayAction) -> Span<OpenNoteDeposit>;
 }
 
 #[starknet::contract]
-mod StrkInvokeHelper {
-    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use starknet::{ContractAddress, get_caller_address, get_contract_address};
-    use super::{IErc20Dispatcher, IErc20DispatcherTrait, OpenNoteDeposit};
+pub mod ConditionalPay {
+    use core::panic_with_felt252;
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
+    };
+    use starknet::{ContractAddress, get_caller_address};
+    use super::{ConditionalPayAction, IConditionalPay, OpenNoteDeposit, Payment};
 
-    mod errors {
-        pub const BAD_POOL: felt252 = 'BAD_POOL';
-        pub const NO_INPUT: felt252 = 'NO_INPUT';
-        pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
+    pub mod errors {
+        pub const CALLER_NOT_POOL: felt252 = 'CALLER_NOT_POOL';
+        pub const NOT_IMPLEMENTED: felt252 = 'NOT_IMPLEMENTED';
     }
 
     #[storage]
     struct Storage {
-        invoke_count: u64,
-        last_note_id: felt252,
+        strk20_pool: ContractAddress,
+        payments: Map<felt252, Payment>,
+        locked_by_token: Map<ContractAddress, u128>,
     }
 
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        Invoked: Invoked,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct Invoked {
-        #[key]
-        note_id: felt252,
-        amount: u128,
-        caller: ContractAddress,
+    #[constructor]
+    pub fn constructor(ref self: ContractState, strk20_pool: ContractAddress) {
+        self.strk20_pool.write(strk20_pool);
     }
 
     #[abi(embed_v0)]
-    impl HelperImpl of super::IStrkInvokeHelper<ContractState> {
+    pub impl ConditionalPayImpl of IConditionalPay<ContractState> {
+        fn get_strk20_pool(self: @ContractState) -> ContractAddress {
+            self.strk20_pool.read()
+        }
+
+        fn get_payment(self: @ContractState, payment_id: felt252) -> Payment {
+            self.payments.read(payment_id)
+        }
+
+        fn get_locked_by_token(self: @ContractState, token: ContractAddress) -> u128 {
+            self.locked_by_token.read(token)
+        }
+
         fn privacy_invoke(
-            ref self: ContractState,
-            token: ContractAddress,
-            pool_address: ContractAddress,
-            note_id: felt252,
+            ref self: ContractState, action: ConditionalPayAction,
         ) -> Span<OpenNoteDeposit> {
-            // Demonstrates the poolAddress placeholder and validates it: it must be the caller.
             let caller = get_caller_address();
-            assert(pool_address == caller, errors::BAD_POOL);
+            let pool = self.strk20_pool.read();
+            assert(caller == pool, errors::CALLER_NOT_POOL);
 
-            let erc20 = IErc20Dispatcher { contract_address: token };
-            // The pool already sent the STRK here (phase order: withdraw < invoke).
-            let balance: u256 = erc20.balance_of(get_contract_address());
-            let amount: u128 = balance.try_into().expect(errors::AMOUNT_OVERFLOW);
-            assert(amount != 0, errors::NO_INPUT);
-
-            // Echo: allow the pool to pull everything back to fill the open note.
-            erc20.approve(pool_address, balance);
-
-            // Side effect — proves invoke runs arbitrary logic atomically.
-            self.invoke_count.write(self.invoke_count.read() + 1);
-            self.last_note_id.write(note_id);
-            self.emit(Invoked { note_id, amount, caller });
-
-            array![OpenNoteDeposit { note_id, token, amount }].span()
-        }
-
-        fn get_invoke_count(self: @ContractState) -> u64 {
-            self.invoke_count.read()
-        }
-
-        fn get_last_note_id(self: @ContractState) -> felt252 {
-            self.last_note_id.read()
+            // Phase 1A scaffold: Action decoding verified, business logic intentionally deferred
+            match action {
+                ConditionalPayAction::Create(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
+                ConditionalPayAction::Claim(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
+                ConditionalPayAction::Refund(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
+            }
         }
     }
 }
