@@ -6,6 +6,7 @@ import {
   ClaimParams,
   ConditionalPayAction,
   CreateParams,
+  OPEN_NOTE_ID_0,
   RefundParams,
 } from './types.js';
 
@@ -160,7 +161,7 @@ export function encodeCreateCalldata(params: CreateParams): string[] {
 }
 
 /**
- * Encodes ClaimParams into calldata matching Cairo Serde representation:
+ * Encodes ClaimParams into calldata with concrete note_id matching Cairo Serde representation:
  * [
  *   1, // Claim discriminant
  *   payment_id,
@@ -182,7 +183,7 @@ export function encodeClaimCalldata(params: ClaimParams): string[] {
 }
 
 /**
- * Encodes RefundParams into calldata matching Cairo Serde representation:
+ * Encodes RefundParams into calldata with concrete note_id matching Cairo Serde representation:
  * [
  *   2, // Refund discriminant
  *   payment_id,
@@ -200,6 +201,44 @@ export function encodeRefundCalldata(params: RefundParams): string[] {
     normalizeFelt(params.payment_id),
     normalizeFelt(params.refund_preimage),
     normalizeFelt(params.note_id),
+  ];
+}
+
+/**
+ * Encodes Claim calldata targeting the Wallet API open-note placeholder `${openNoteIds[0]}`.
+ * Strictly binds the placeholder only to the note_id argument.
+ */
+export function encodeClaimWithPlaceholderCalldata(params: {
+  payment_id: BigIntish;
+  claim_preimage: BigIntish;
+}): string[] {
+  validateFelt(params.payment_id, 'payment_id');
+  validateFelt(params.claim_preimage, 'claim_preimage');
+
+  return [
+    normalizeFelt(ActionDiscriminant.Claim),
+    normalizeFelt(params.payment_id),
+    normalizeFelt(params.claim_preimage),
+    OPEN_NOTE_ID_0,
+  ];
+}
+
+/**
+ * Encodes Refund calldata targeting the Wallet API open-note placeholder `${openNoteIds[0]}`.
+ * Strictly binds the placeholder only to the note_id argument.
+ */
+export function encodeRefundWithPlaceholderCalldata(params: {
+  payment_id: BigIntish;
+  refund_preimage: BigIntish;
+}): string[] {
+  validateFelt(params.payment_id, 'payment_id');
+  validateFelt(params.refund_preimage, 'refund_preimage');
+
+  return [
+    normalizeFelt(ActionDiscriminant.Refund),
+    normalizeFelt(params.payment_id),
+    normalizeFelt(params.refund_preimage),
+    OPEN_NOTE_ID_0,
   ];
 }
 

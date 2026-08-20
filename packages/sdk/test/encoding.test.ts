@@ -4,8 +4,10 @@ import {
   CONTRACT_ADDRESS_MAX,
   encodeActionCalldata,
   encodeClaimCalldata,
+  encodeClaimWithPlaceholderCalldata,
   encodeCreateCalldata,
   encodeRefundCalldata,
+  encodeRefundWithPlaceholderCalldata,
   STARKNET_PRIME,
   U128_MAX,
   U64_MAX,
@@ -14,6 +16,7 @@ import {
   validateU128,
   validateU64,
 } from '../src/encoding.js';
+import { normalizeFelt } from '../src/hashing.js';
 import { ClaimParams, CreateParams, RefundParams } from '../src/types.js';
 
 describe('SDK Calldata Encoding & Range Validation Tests', () => {
@@ -58,7 +61,7 @@ describe('SDK Calldata Encoding & Range Validation Tests', () => {
     const calldata = encodeClaimCalldata(sampleClaim);
     assert.equal(calldata.length, 4, 'CLAIM calldata must be 4 felts');
     assert.equal(calldata[0], '0x1', 'CLAIM discriminant must be 0x1');
-    assert.equal(calldata[1], sampleClaim.payment_id.toLowerCase());
+    assert.equal(calldata[1], normalizeFelt(sampleClaim.payment_id));
     assert.equal(calldata[2], '0xc1a01');
     assert.equal(calldata[3], '0x999');
   });
@@ -67,9 +70,31 @@ describe('SDK Calldata Encoding & Range Validation Tests', () => {
     const calldata = encodeRefundCalldata(sampleRefund);
     assert.equal(calldata.length, 4, 'REFUND calldata must be 4 felts');
     assert.equal(calldata[0], '0x2', 'REFUND discriminant must be 0x2');
-    assert.equal(calldata[1], sampleRefund.payment_id.toLowerCase());
+    assert.equal(calldata[1], normalizeFelt(sampleRefund.payment_id));
     assert.equal(calldata[2], '0x1e401');
     assert.equal(calldata[3], '0x999');
+  });
+
+  it('encodes templated CLAIM and REFUND calldata targeting ${openNoteIds[0]}', () => {
+    const claimCalldata = encodeClaimWithPlaceholderCalldata({
+      payment_id: sampleClaim.payment_id,
+      claim_preimage: sampleClaim.claim_preimage,
+    });
+    assert.equal(claimCalldata.length, 4);
+    assert.equal(claimCalldata[0], '0x1');
+    assert.equal(claimCalldata[1], normalizeFelt(sampleClaim.payment_id));
+    assert.equal(claimCalldata[2], '0xc1a01');
+    assert.equal(claimCalldata[3], '${openNoteIds[0]}');
+
+    const refundCalldata = encodeRefundWithPlaceholderCalldata({
+      payment_id: sampleRefund.payment_id,
+      refund_preimage: sampleRefund.refund_preimage,
+    });
+    assert.equal(refundCalldata.length, 4);
+    assert.equal(refundCalldata[0], '0x2');
+    assert.equal(refundCalldata[1], normalizeFelt(sampleRefund.payment_id));
+    assert.equal(refundCalldata[2], '0x1e401');
+    assert.equal(refundCalldata[3], '${openNoteIds[0]}');
   });
 
   it('encodes polymorphic actions via encodeActionCalldata', () => {
