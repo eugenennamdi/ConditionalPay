@@ -2,14 +2,22 @@
   "name": "conditionalpay",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
-    "test": "node test/regression-duplicate-guard.test.mjs"
+    "test": "npm run check:test-vectors && npm run test:frontend && npm run test:sdk",
+    "test:frontend": "node test/regression-duplicate-guard.test.mjs",
+    "test:sdk": "tsc -p packages/sdk/tsconfig.json && node --test packages/sdk/dist/test/*.test.js",
+    "generate:test-vectors": "node scripts/generate-cairo-vectors.mjs",
+    "check:test-vectors": "node scripts/generate-cairo-vectors.mjs --check"
   },
   "dependencies": {
+    "@conditionalpay/sdk": "*",
     "@starknet-io/get-starknet-discovery": "6.0.4",
     "@starknet-io/get-starknet-wallet-standard": "6.0.4",
     "next": "^16.0.8",

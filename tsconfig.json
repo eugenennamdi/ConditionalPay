@@ -26,6 +26,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@conditionalpay/sdk": [
+        "./packages/sdk/src/index.ts"
       ]
     }
   },
@@ -35,6 +38,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "src/**/*",
+    "packages/sdk/src/**/*",
     "old/core",
     ".next/dev/types/**/*.ts"
   ],

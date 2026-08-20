@@ -1,0 +1,101 @@
+{
+  "version": "1.0.0",
+  "description": "Deterministic cross-language test vectors for ConditionalPay Cairo & TypeScript SDK",
+  "domains": {
+    "CONDITIONALPAY_CLAIM_V1": "0x434f4e444954494f4e414c5041595f434c41494d5f5631",
+    "CONDITIONALPAY_REFUND_V1": "0x434f4e444954494f4e414c5041595f524546554e445f5631",
+    "CONDITIONALPAY_PAYMENT_V1": "0x434f4e444954494f4e414c5041595f5041594d454e545f5631"
+  },
+  "vectors": [
+    {
+      "name": "vector_1_standard_unapproved_1strk",
+      "description": "Standard payment with zero approver, 1 STRK amount, nonzero expiry",
+      "token": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "amount": "1000000000000000000",
+      "claim_preimage": "0xc1a01",
+      "refund_preimage": "0x1e401",
+      "claim_after": "100",
+      "expires_at": "300",
+      "approver": "0x0",
+      "nonce": "0x1",
+      "claim_hash": "0x7b52c408bddeaaf8cc36a4c6c3bfd24c7a0e7b241b9fcad83c2c8173cd01261",
+      "refund_hash": "0x30c804f6f6b24dd19f29ff4bc2b54f1f44cb336a90dca293b80b413c0599ac5",
+      "payment_id": "0x5f63ac970629bfb6539bb18df38d3a34cf8ff7e1ed9a2300d8315f38f5d166"
+    },
+    {
+      "name": "vector_2_configured_approver_small_amount",
+      "description": "Small amount payment with configured non-zero approver address",
+      "token": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "amount": "500",
+      "claim_preimage": "0xaa11",
+      "refund_preimage": "0xbb22",
+      "claim_after": "0",
+      "expires_at": "1000",
+      "approver": "0x53b40a647cedfca6ca84f542a0fe3673603190d52737e333680420fa390776a",
+      "nonce": "0x2a",
+      "claim_hash": "0xa2da475f5762d5b13ee9196b07333213e7ff39452ce32c3e410429825db71d",
+      "refund_hash": "0x2e329b9232cd2745e9ee2df8d4d511c75441d3c03233e4085992deb07db349",
+      "payment_id": "0x491a56f25d50d867ff4e068928c0d152229ddfc6c150eed0854014105334a9"
+    },
+    {
+      "name": "vector_3_no_expiry_eth_amount",
+      "description": "2.5 ETH payment with no expiry (expires_at = 0)",
+      "token": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+      "amount": "2500000000000000000",
+      "claim_preimage": "0x778899",
+      "refund_preimage": "0x112233",
+      "claim_after": "500",
+      "expires_at": "0",
+      "approver": "0x0",
+      "nonce": "0x64",
+      "claim_hash": "0x57a6b9c9c5140904005926bfb24b41edfcb7e4bc7d8eacbf3d69879a91c4f49",
+      "refund_hash": "0x6fe32e4c3785abec5152a1509007c59350f54cde240aea3937a3766a4d9ead6",
+      "payment_id": "0x761ce52cf10e82bab4fd9cd771dbbe5d2ed3d0d5356af3f5d2cf13e00a8964f"
+    },
+    {
+      "name": "vector_4_nonce_domain_variation",
+      "description": "Identical fields to vector 1 but with nonce = 2, proving domain variation",
+      "token": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "amount": "1000000000000000000",
+      "claim_preimage": "0xc1a01",
+      "refund_preimage": "0x1e401",
+      "claim_after": "100",
+      "expires_at": "300",
+      "approver": "0x0",
+      "nonce": "0x2",
+      "claim_hash": "0x7b52c408bddeaaf8cc36a4c6c3bfd24c7a0e7b241b9fcad83c2c8173cd01261",
+      "refund_hash": "0x30c804f6f6b24dd19f29ff4bc2b54f1f44cb336a90dca293b80b413c0599ac5",
+      "payment_id": "0x70ecf0f6d8927b1c685758b13b8011caa5a6c2747a666aa628fd044104f9f0a"
+    },
+    {
+      "name": "vector_5_u128_max_bound_and_large_timestamps",
+      "description": "u128::MAX amount bound with realistic Unix epoch timestamps",
+      "token": "0x53c5b25c9f7864944959f6d2b59f91d0e8a203732d038b36f5b161479c40064",
+      "amount": "340282366920938463463374607431768211455",
+      "claim_preimage": "0x987654321",
+      "refund_preimage": "0x123456789",
+      "claim_after": "1700000000",
+      "expires_at": "1800000000",
+      "approver": "0x111222333",
+      "nonce": "0xf423f",
+      "claim_hash": "0x7fd7932866e5aaca45f04fdffb4b52aeb848c3d06f97c5e1923d6eecc3dabc5",
+      "refund_hash": "0x58de0d0f03f7efcff2ca7120152594246e329e7fc36ce650e8de76c943dec7e",
+      "payment_id": "0x72644c3d151db7a4919c788f90e2796894c8ce0df0ba0369e46ba1bb373f6db"
+    },
+    {
+      "name": "vector_6_minimal_edge_case",
+      "description": "Amount 1, zero timestamps, zero approver, zero nonce",
+      "token": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "amount": "1",
+      "claim_preimage": "0x1",
+      "refund_preimage": "0x2",
+      "claim_after": "0",
+      "expires_at": "0",
+      "approver": "0x0",
+      "nonce": "0x0",
+      "claim_hash": "0x22a69d2c8165f7380bf1f16676e68556cb045e4c907c7c9ed6914d379f5f88c",
+      "refund_hash": "0x2fd15805e90dbad7d77098a095845bc6503410d6c96a2649bca96d1dbdcd4a5",
+      "payment_id": "0x2a7cb9f292f7604dcc28393d9b9ab1c06f7e7918b39492381ef5c01062e9fcf"
+    }
+  ]
+}

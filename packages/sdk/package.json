@@ -1,0 +1,22 @@
+{
+  "name": "@conditionalpay/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript SDK for ConditionalPay privacy-preserving conditional payments on Starknet with STRK20",
+  "main": "./dist/src/index.js",
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "starknet": "10.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -3732,3 +3732,19 @@ fn test_reentrant_token_approve_entrypoint_blocked() {
     let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
     cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
 }
+
+#[test]
+fn test_cairo_contract_address_bounds() {
+    let zero: Option<ContractAddress> = 0x0.try_into();
+    assert(zero.is_some(), 'Zero addr rejected');
+
+    let max_valid: Option<ContractAddress> =
+        0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        .try_into();
+    assert(max_valid.is_some(), 'Max valid addr rejected');
+
+    let first_invalid: Option<ContractAddress> =
+        0x800000000000000000000000000000000000000000000000000000000000000
+        .try_into();
+    assert(first_invalid.is_none(), 'First invalid addr accepted');
+}
