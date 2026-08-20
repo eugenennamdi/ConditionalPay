@@ -1,6 +1,6 @@
 use conditionalpay::{
     ClaimParams, ConditionalPay, ConditionalPayAction, CreateParams, IConditionalPayDispatcher,
-    IConditionalPayDispatcherTrait, OpenNoteDeposit, RefundParams, compute_hashlock,
+    IConditionalPayDispatcherTrait, OpenNoteDeposit, Payment, RefundParams, compute_hashlock,
     compute_payment_id, compute_refund_hash, domains, payment_state,
 };
 use core::panic_with_felt252;
@@ -11,18 +11,33 @@ use starknet::testing::{set_block_timestamp, set_contract_address};
 #[starknet::interface]
 pub trait IMockErc20<TState> {
     fn balance_of(self: @TState, account: ContractAddress) -> u256;
+    fn allowance(self: @TState, owner: ContractAddress, spender: ContractAddress) -> u256;
     fn approve(ref self: TState, spender: ContractAddress, amount: u256) -> bool;
+    fn transfer_from(
+        ref self: TState, sender: ContractAddress, recipient: ContractAddress, amount: u256,
+    ) -> bool;
     fn set_balance(ref self: TState, account: ContractAddress, amount: u256);
+    fn set_fail_approve(ref self: TState, fail: bool);
+    fn set_revert_approve(ref self: TState, revert_val: bool);
+    fn set_allowance_for_test(
+        ref self: TState, owner: ContractAddress, spender: ContractAddress, amount: u256,
+    );
 }
 
 #[starknet::contract]
 pub mod MockErc20 {
-    use starknet::ContractAddress;
-    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
+    };
+    use starknet::{ContractAddress, get_caller_address};
 
     #[storage]
     struct Storage {
         balances: Map<ContractAddress, u256>,
+        allowances: Map<(ContractAddress, ContractAddress), u256>,
+        fail_approve: bool,
+        revert_approve: bool,
     }
 
     #[abi(embed_v0)]
@@ -30,11 +45,275 @@ pub mod MockErc20 {
         fn balance_of(self: @ContractState, account: ContractAddress) -> u256 {
             self.balances.read(account)
         }
+
+        fn allowance(
+            self: @ContractState, owner: ContractAddress, spender: ContractAddress,
+        ) -> u256 {
+            self.allowances.read((owner, spender))
+        }
+
         fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
+            if self.revert_approve.read() {
+                core::panic_with_felt252('ERC20_APPROVE_REVERT');
+            }
+            if self.fail_approve.read() {
+                return false;
+            }
+            let caller = get_caller_address();
+            self.allowances.write((caller, spender), amount);
             true
         }
+
+        fn transfer_from(
+            ref self: ContractState,
+            sender: ContractAddress,
+            recipient: ContractAddress,
+            amount: u256,
+        ) -> bool {
+            let caller = get_caller_address();
+            let allowed = self.allowances.read((sender, caller));
+            assert(allowed >= amount, 'INSUFFICIENT_ALLOWANCE');
+            let sender_bal = self.balances.read(sender);
+            assert(sender_bal >= amount, 'INSUFFICIENT_BALANCE');
+
+            self.allowances.write((sender, caller), allowed - amount);
+            self.balances.write(sender, sender_bal - amount);
+            let recipient_bal = self.balances.read(recipient);
+            self.balances.write(recipient, recipient_bal + amount);
+            true
+        }
+
         fn set_balance(ref self: ContractState, account: ContractAddress, amount: u256) {
             self.balances.write(account, amount);
+        }
+
+        fn set_fail_approve(ref self: ContractState, fail: bool) {
+            self.fail_approve.write(fail);
+        }
+
+        fn set_revert_approve(ref self: ContractState, revert_val: bool) {
+            self.revert_approve.write(revert_val);
+        }
+
+        fn set_allowance_for_test(
+            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256,
+        ) {
+            self.allowances.write((owner, spender), amount);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// TEST FIXTURE CONTRACT (For state-manipulation testing without production backdoors)
+// -----------------------------------------------------------------------------
+
+#[starknet::interface]
+pub trait ITestStateConditionalPay<TState> {
+    fn get_strk20_pool(self: @TState) -> ContractAddress;
+    fn get_payment(self: @TState, payment_id: felt252) -> Payment;
+    fn get_locked_by_token(self: @TState, token: ContractAddress) -> u128;
+    fn compute_payment_id(self: @TState, params: CreateParams) -> felt252;
+    fn privacy_invoke(ref self: TState, action: ConditionalPayAction) -> Span<OpenNoteDeposit>;
+    fn set_payment_for_test(ref self: TState, payment_id: felt252, payment: Payment);
+    fn set_locked_by_token_for_test(ref self: TState, token: ContractAddress, amount: u128);
+}
+
+#[starknet::contract]
+pub mod TestStateConditionalPay {
+    use conditionalpay::{
+        ClaimParams, ConditionalPayAction, CreateParams, IErc20Dispatcher, IErc20DispatcherTrait,
+        OpenNoteDeposit, Payment, compute_hashlock, compute_payment_id, payment_state,
+    };
+    use core::panic_with_felt252;
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
+    };
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
+
+    pub mod errors {
+        pub const CALLER_NOT_POOL: felt252 = 'CALLER_NOT_POOL';
+        pub const NOT_IMPLEMENTED: felt252 = 'NOT_IMPLEMENTED';
+        pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
+        pub const INVALID_EXPIRY: felt252 = 'INVALID_EXPIRY';
+        pub const PAYMENT_ALREADY_EXISTS: felt252 = 'PAYMENT_ALREADY_EXISTS';
+        pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
+        pub const PAYMENT_NOT_ACTIVE: felt252 = 'PAYMENT_NOT_ACTIVE';
+        pub const INVALID_CLAIM_SECRET: felt252 = 'INVALID_CLAIM_SECRET';
+        pub const CLAIM_TOO_EARLY: felt252 = 'CLAIM_TOO_EARLY';
+        pub const PAYMENT_EXPIRED: felt252 = 'PAYMENT_EXPIRED';
+        pub const APPROVAL_REQUIRED: felt252 = 'APPROVAL_REQUIRED';
+        pub const INSUFFICIENT_LOCKED_AMOUNT: felt252 = 'INSUFFICIENT_LOCKED_AMOUNT';
+        pub const ERC20_APPROVE_FAILED: felt252 = 'ERC20_APPROVE_FAILED';
+    }
+
+    #[storage]
+    struct Storage {
+        strk20_pool: ContractAddress,
+        payments: Map<felt252, Payment>,
+        locked_by_token: Map<ContractAddress, u128>,
+    }
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    pub enum Event {
+        PaymentCreated: PaymentCreated,
+        PaymentClaimed: PaymentClaimed,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentCreated {
+        #[key]
+        pub payment_id: felt252,
+        pub token: ContractAddress,
+        pub amount: u128,
+        pub hashlock: felt252,
+        pub refund_hash: felt252,
+        pub claim_after: u64,
+        pub expires_at: u64,
+        pub approver: ContractAddress,
+        pub nonce: felt252,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentClaimed {
+        #[key]
+        pub payment_id: felt252,
+    }
+
+    #[constructor]
+    pub fn constructor(ref self: ContractState, strk20_pool: ContractAddress) {
+        self.strk20_pool.write(strk20_pool);
+    }
+
+    #[abi(embed_v0)]
+    pub impl TestStateConditionalPayImpl of super::ITestStateConditionalPay<ContractState> {
+        fn get_strk20_pool(self: @ContractState) -> ContractAddress {
+            self.strk20_pool.read()
+        }
+
+        fn get_payment(self: @ContractState, payment_id: felt252) -> Payment {
+            self.payments.read(payment_id)
+        }
+
+        fn get_locked_by_token(self: @ContractState, token: ContractAddress) -> u128 {
+            self.locked_by_token.read(token)
+        }
+
+        fn compute_payment_id(self: @ContractState, params: CreateParams) -> felt252 {
+            compute_payment_id(@params)
+        }
+
+        fn set_payment_for_test(ref self: ContractState, payment_id: felt252, payment: Payment) {
+            self.payments.write(payment_id, payment);
+        }
+
+        fn set_locked_by_token_for_test(
+            ref self: ContractState, token: ContractAddress, amount: u128,
+        ) {
+            self.locked_by_token.write(token, amount);
+        }
+
+        fn privacy_invoke(
+            ref self: ContractState, action: ConditionalPayAction,
+        ) -> Span<OpenNoteDeposit> {
+            let caller = get_caller_address();
+            let pool = self.strk20_pool.read();
+            assert(caller == pool, errors::CALLER_NOT_POOL);
+
+            match action {
+                ConditionalPayAction::Create(params) => { self.handle_create(params) },
+                ConditionalPayAction::Claim(params) => { self.handle_claim(params) },
+                ConditionalPayAction::Refund(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
+            }
+        }
+    }
+
+    #[generate_trait]
+    impl InternalFunctions of InternalFunctionsTrait {
+        fn handle_create(ref self: ContractState, params: CreateParams) -> Span<OpenNoteDeposit> {
+            assert(params.amount != 0, errors::ZERO_AMOUNT);
+            if params.expires_at != 0 {
+                assert(params.expires_at > params.claim_after, errors::INVALID_EXPIRY);
+                assert(params.expires_at > get_block_timestamp(), errors::INVALID_EXPIRY);
+            }
+            let payment_id = compute_payment_id(@params);
+            let existing_payment = self.payments.read(payment_id);
+            assert(
+                existing_payment.state == payment_state::UNINITIALIZED,
+                errors::PAYMENT_ALREADY_EXISTS,
+            );
+            let current_locked = self.locked_by_token.read(params.token);
+            let new_locked = current_locked + params.amount;
+            let erc20 = IErc20Dispatcher { contract_address: params.token };
+            let contract_balance: u256 = erc20.balance_of(get_contract_address());
+            assert(contract_balance >= new_locked.into(), errors::INSUFFICIENT_BALANCE);
+
+            self
+                .payments
+                .write(
+                    payment_id,
+                    Payment {
+                        token: params.token,
+                        amount: params.amount,
+                        hashlock: params.hashlock,
+                        refund_hash: params.refund_hash,
+                        claim_after: params.claim_after,
+                        expires_at: params.expires_at,
+                        approver: params.approver,
+                        approved: false,
+                        state: payment_state::ACTIVE,
+                    },
+                );
+            self.locked_by_token.write(params.token, new_locked);
+            self
+                .emit(
+                    PaymentCreated {
+                        payment_id,
+                        token: params.token,
+                        amount: params.amount,
+                        hashlock: params.hashlock,
+                        refund_hash: params.refund_hash,
+                        claim_after: params.claim_after,
+                        expires_at: params.expires_at,
+                        approver: params.approver,
+                        nonce: params.nonce,
+                    },
+                );
+            array![].span()
+        }
+
+        fn handle_claim(ref self: ContractState, params: ClaimParams) -> Span<OpenNoteDeposit> {
+            let mut payment = self.payments.read(params.payment_id);
+            assert(payment.state == payment_state::ACTIVE, errors::PAYMENT_NOT_ACTIVE);
+            let computed_hash = compute_hashlock(params.claim_preimage);
+            assert(computed_hash == payment.hashlock, errors::INVALID_CLAIM_SECRET);
+            let now = get_block_timestamp();
+            assert(now >= payment.claim_after, errors::CLAIM_TOO_EARLY);
+            if payment.expires_at != 0 {
+                assert(now < payment.expires_at, errors::PAYMENT_EXPIRED);
+            }
+            let zero_address: ContractAddress = 0x0.try_into().unwrap();
+            if payment.approver != zero_address {
+                assert(payment.approved, errors::APPROVAL_REQUIRED);
+            }
+            let current_locked = self.locked_by_token.read(payment.token);
+            assert(current_locked >= payment.amount, errors::INSUFFICIENT_LOCKED_AMOUNT);
+            let new_locked = current_locked - payment.amount;
+            payment.state = payment_state::CLAIMED;
+            self.payments.write(params.payment_id, payment);
+            self.locked_by_token.write(payment.token, new_locked);
+            let pool = self.strk20_pool.read();
+            let erc20 = IErc20Dispatcher { contract_address: payment.token };
+            let approved = erc20.approve(pool, payment.amount.into());
+            assert(approved, errors::ERC20_APPROVE_FAILED);
+            self.emit(PaymentClaimed { payment_id: params.payment_id });
+            array![
+                OpenNoteDeposit {
+                    note_id: params.note_id, token: payment.token, amount: payment.amount,
+                },
+            ]
+                .span()
         }
     }
 }
@@ -63,6 +342,22 @@ fn deploy_conditional_pay(
     (addr, IConditionalPayDispatcher { contract_address: addr })
 }
 
+fn deploy_test_state_conditional_pay(
+    pool_address: ContractAddress, salt: felt252,
+) -> (ContractAddress, ITestStateConditionalPayDispatcher) {
+    let mut calldata = ArrayTrait::new();
+    calldata.append(pool_address.into());
+    let (addr, _) = deploy_syscall(
+        TestStateConditionalPay::TEST_CLASS_HASH.try_into().unwrap(), salt, calldata.span(), false,
+    )
+        .unwrap();
+    (addr, ITestStateConditionalPayDispatcher { contract_address: addr })
+}
+
+// =============================================================================
+// CATEGORY 1: FOUNDATION & CONSTANTS (Phase 1A) — 4 Tests
+// =============================================================================
+
 #[test]
 fn test_state_constants() {
     assert(payment_state::UNINITIALIZED == 0, 'UNINITIALIZED must be 0');
@@ -83,11 +378,9 @@ fn test_constructor_and_getters() {
     let pool_address: ContractAddress = contract_address(0x123456789);
     let (_, cp) = deploy_conditional_pay(pool_address, 1);
 
-    // Test get_strk20_pool
     let stored_pool = cp.get_strk20_pool();
     assert(stored_pool == pool_address, 'Pool address mismatch');
 
-    // Test uninitialized payment
     let payment = cp.get_payment(0x999);
     assert(payment.state == payment_state::UNINITIALIZED, 'State must be 0');
     assert(payment.amount == 0, 'Amount must be 0');
@@ -95,7 +388,6 @@ fn test_constructor_and_getters() {
     assert(payment.refund_hash == 0, 'Refund hash must be 0');
     assert(payment.approved == false, 'Approved must be false');
 
-    // Test initial locked liability
     let token: ContractAddress = contract_address(0xabc);
     let locked = cp.get_locked_by_token(token);
     assert(locked == 0, 'Initial liability must be 0');
@@ -117,25 +409,21 @@ fn test_payment_id_derivation_deterministic() {
     let id2 = compute_payment_id(@params1);
     assert(id1 == id2, 'ID must be deterministic');
 
-    // Changing nonce changes payment ID
     let mut params_diff_nonce = params1;
     params_diff_nonce.nonce = 0x556;
     let id_diff_nonce = compute_payment_id(@params_diff_nonce);
     assert(id1 != id_diff_nonce, 'Nonce must change payment ID');
 
-    // Changing amount changes payment ID
     let mut params_diff_amount = params1;
     params_diff_amount.amount = 1001;
     let id_diff_amount = compute_payment_id(@params_diff_amount);
     assert(id1 != id_diff_amount, 'Amount must change ID');
 
-    // Changing token changes payment ID
     let mut params_diff_token = params1;
     params_diff_token.token = contract_address(0xabd);
     let id_diff_token = compute_payment_id(@params_diff_token);
     assert(id1 != id_diff_token, 'Token must change ID');
 
-    // Test helper functions
     let hashlock = compute_hashlock(0x123);
     let refund_hash = compute_refund_hash(0x456);
     assert(hashlock != 0, 'Hashlock must be non-zero');
@@ -143,15 +431,17 @@ fn test_payment_id_derivation_deterministic() {
     assert(hashlock != refund_hash, 'Domain separation failed');
 }
 
+// =============================================================================
+// CATEGORY 2: CREATE FLOW (Phase 1B) — 15 Tests
+// =============================================================================
+
 #[test]
 fn test_successful_create_and_storage_exactness() {
     let pool_address: ContractAddress = contract_address(0x111);
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 10);
     let (token_addr, token) = deploy_mock_token(11);
 
-    // Fund ConditionalPay with tokens to cover the prospective payment
     token.set_balance(cp_addr, 5000);
-
     set_block_timestamp(50);
     set_contract_address(pool_address);
 
@@ -169,10 +459,8 @@ fn test_successful_create_and_storage_exactness() {
     let expected_payment_id = cp.compute_payment_id(create_params);
     let deposits = cp.privacy_invoke(ConditionalPayAction::Create(create_params));
 
-    // CREATE must return empty OpenNoteDeposit span
     assert(deposits.len() == 0, 'CREATE must return empty span');
 
-    // Verify stored payment fields
     let payment = cp.get_payment(expected_payment_id);
     assert(payment.token == token_addr, 'Stored token mismatch');
     assert(payment.amount == 2000, 'Stored amount mismatch');
@@ -184,7 +472,6 @@ fn test_successful_create_and_storage_exactness() {
     assert(payment.approved == false, 'Initial approved must be false');
     assert(payment.state == payment_state::ACTIVE, 'Initial state must be ACTIVE');
 
-    // Verify liability accounting
     let locked = cp.get_locked_by_token(token_addr);
     assert(locked == 2000, 'Locked amount must be 2000');
 }
@@ -204,7 +491,7 @@ fn test_create_with_zero_expiry_succeeds() {
         hashlock: 0xaaa,
         refund_hash: 0xbbb,
         claim_after: 500,
-        expires_at: 0, // 0 = no expiry, refund unavailable
+        expires_at: 0,
         approver: contract_address(0x0),
         nonce: 0x111,
     };
@@ -230,7 +517,7 @@ fn test_create_reverts_zero_amount() {
 
     let create_params = CreateParams {
         token: token_addr,
-        amount: 0, // Zero amount
+        amount: 0,
         hashlock: 0xaaa,
         refund_hash: 0xbbb,
         claim_after: 100,
@@ -258,7 +545,7 @@ fn test_create_reverts_expires_at_before_claim_after() {
         hashlock: 0xaaa,
         refund_hash: 0xbbb,
         claim_after: 200,
-        expires_at: 100, // expires_at <= claim_after
+        expires_at: 100,
         approver: contract_address(0x0),
         nonce: 0x1,
     };
@@ -282,7 +569,7 @@ fn test_create_reverts_expires_at_equal_claim_after() {
         hashlock: 0xaaa,
         refund_hash: 0xbbb,
         claim_after: 200,
-        expires_at: 200, // expires_at == claim_after
+        expires_at: 200,
         approver: contract_address(0x0),
         nonce: 0x1,
     };
@@ -307,7 +594,7 @@ fn test_create_reverts_expired_at_creation() {
         hashlock: 0xaaa,
         refund_hash: 0xbbb,
         claim_after: 100,
-        expires_at: 400, // expires_at < current timestamp (500)
+        expires_at: 400,
         approver: contract_address(0x0),
         nonce: 0x1,
     };
@@ -336,10 +623,7 @@ fn test_create_reverts_duplicate_payment_id() {
         nonce: 0x1,
     };
 
-    // First CREATE succeeds
     cp.privacy_invoke(ConditionalPayAction::Create(create_params));
-
-    // Second duplicate CREATE must revert
     cp.privacy_invoke(ConditionalPayAction::Create(create_params));
 }
 
@@ -350,7 +634,6 @@ fn test_create_reverts_underfunded_contract() {
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 80);
     let (token_addr, token) = deploy_mock_token(81);
 
-    // Contract has 500 balance, but CREATE asks for 1000
     token.set_balance(cp_addr, 500);
     set_contract_address(pool_address);
 
@@ -374,7 +657,6 @@ fn test_exact_and_overfunded_balance_accounting() {
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 90);
     let (token_addr, token) = deploy_mock_token(91);
 
-    // Exact balance (1000)
     token.set_balance(cp_addr, 1000);
     set_contract_address(pool_address);
 
@@ -391,7 +673,6 @@ fn test_exact_and_overfunded_balance_accounting() {
     cp.privacy_invoke(ConditionalPayAction::Create(p1));
     assert(cp.get_locked_by_token(token_addr) == 1000, 'Locked must be 1000');
 
-    // Overfunded: token balance increased to 3500, lock another 1500
     token.set_balance(cp_addr, 3500);
     let p2 = CreateParams {
         token: token_addr,
@@ -405,8 +686,6 @@ fn test_exact_and_overfunded_balance_accounting() {
     };
     cp.privacy_invoke(ConditionalPayAction::Create(p2));
     assert(cp.get_locked_by_token(token_addr) == 2500, 'Locked must be 2500');
-
-    // Solvency invariant check: locked (2500) <= balance (3500)
     assert(cp.get_locked_by_token(token_addr) <= 3500, 'Solvency invariant failed');
 }
 
@@ -475,30 +754,6 @@ fn test_privacy_invoke_create_reverts_if_not_pool() {
 }
 
 #[test]
-#[should_panic(expected: ('NOT_IMPLEMENTED', 'ENTRYPOINT_FAILED'))]
-fn test_privacy_invoke_claim_still_not_implemented() {
-    let pool_address: ContractAddress = contract_address(0x111);
-    let (_, cp) = deploy_conditional_pay(pool_address, 120);
-
-    set_contract_address(pool_address);
-
-    let claim_params = ClaimParams { payment_id: 0xaaa, claim_preimage: 0xbbb, note_id: 0xccc };
-    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
-}
-
-#[test]
-#[should_panic(expected: ('NOT_IMPLEMENTED', 'ENTRYPOINT_FAILED'))]
-fn test_privacy_invoke_refund_still_not_implemented() {
-    let pool_address: ContractAddress = contract_address(0x111);
-    let (_, cp) = deploy_conditional_pay(pool_address, 130);
-
-    set_contract_address(pool_address);
-
-    let refund_params = RefundParams { payment_id: 0xaaa, refund_preimage: 0xbbb, note_id: 0xccc };
-    cp.privacy_invoke(ConditionalPayAction::Refund(refund_params));
-}
-
-#[test]
 fn test_failed_create_does_not_mutate_state_or_liabilities() {
     let pool_address: ContractAddress = contract_address(0x111);
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 140);
@@ -507,7 +762,6 @@ fn test_failed_create_does_not_mutate_state_or_liabilities() {
     token.set_balance(cp_addr, 1000);
     set_contract_address(pool_address);
 
-    // Baseline: lock 400
     let valid_p = CreateParams {
         token: token_addr,
         amount: 400,
@@ -521,8 +775,6 @@ fn test_failed_create_does_not_mutate_state_or_liabilities() {
     cp.privacy_invoke(ConditionalPayAction::Create(valid_p));
     assert(cp.get_locked_by_token(token_addr) == 400, 'Baseline locked must be 400');
 
-    // Attempting invalid payment (e.g. amount 700 with only 600 remaining balance)
-    // We can verify that uncreated payment ID remains UNINITIALIZED
     let uncreated_id = cp
         .compute_payment_id(
             CreateParams {
@@ -547,11 +799,9 @@ fn test_solvency_invariant_multi_create() {
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 150);
     let (token_addr, token) = deploy_mock_token(151);
 
-    // Initial token deposit: 10,000
     token.set_balance(cp_addr, 10000);
     set_contract_address(pool_address);
 
-    // Create 3 payments: 2000 + 3000 + 4000 = 9000 locked
     let p1 = CreateParams {
         token: token_addr,
         amount: 2000,
@@ -598,7 +848,6 @@ fn test_create_funding_order_realistic() {
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 160);
     let (token_addr, token) = deploy_mock_token(161);
 
-    // Initial state: ConditionalPay holds 0 tokens
     assert(token.balance_of(cp_addr) == 0, 'Initial balance must be 0');
     assert(cp.get_locked_by_token(token_addr) == 0, 'Initial locked must be 0');
 
@@ -613,15 +862,12 @@ fn test_create_funding_order_realistic() {
         nonce: 0x999,
     };
 
-    // Step 1: Preceding STRK20 withdraw action transfers 1500 tokens to ConditionalPay
     token.set_balance(cp_addr, 1500);
     assert(token.balance_of(cp_addr) == 1500, 'Funded balance must be 1500');
 
-    // Step 2: Atomic invoke(ConditionalPay, CREATE) executed by pool
     set_contract_address(pool_address);
     let deposits = cp.privacy_invoke(ConditionalPayAction::Create(create_params));
 
-    // Step 3: Verify execution invariants
     assert(deposits.len() == 0, 'Must return empty span');
 
     let payment_id = cp.compute_payment_id(create_params);
@@ -641,7 +887,6 @@ fn test_create_without_preceding_funding_reverts() {
     let (cp_addr, cp) = deploy_conditional_pay(pool_address, 170);
     let (token_addr, token) = deploy_mock_token(171);
 
-    // Initial state: ConditionalPay holds 0 tokens (funding step omitted/failed)
     assert(token.balance_of(cp_addr) == 0, 'Balance must be 0');
 
     set_contract_address(pool_address);
@@ -656,8 +901,23 @@ fn test_create_without_preceding_funding_reverts() {
         nonce: 0x999,
     };
 
-    // Attempting CREATE without funding must revert
     cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+}
+
+// =============================================================================
+// CATEGORY 3: ABI / SERDE ENCODING (Phase 1A & 1B) — 4 Tests
+// =============================================================================
+
+#[test]
+#[should_panic(expected: ('NOT_IMPLEMENTED', 'ENTRYPOINT_FAILED'))]
+fn test_privacy_invoke_refund_still_not_implemented() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (_, cp) = deploy_conditional_pay(pool_address, 130);
+
+    set_contract_address(pool_address);
+
+    let refund_params = RefundParams { payment_id: 0xaaa, refund_preimage: 0xbbb, note_id: 0xccc };
+    cp.privacy_invoke(ConditionalPayAction::Refund(refund_params));
 }
 
 #[test]
@@ -772,4 +1032,889 @@ fn test_enum_discriminant_calldata_decoding() {
         },
         _ => panic_with_felt252('Expected Refund variant'),
     }
+}
+
+// =============================================================================
+// CATEGORY 4: CLAIM FLOW (Phase 1C) — 23 Tests
+// =============================================================================
+
+#[test]
+fn test_successful_claim_flow() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 200);
+    let (token_addr, token) = deploy_mock_token(201);
+
+    token.set_balance(cp_addr, 5000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let refund_hash = compute_refund_hash(0x654321);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1800,
+        hashlock,
+        refund_hash,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x111,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    assert(cp.get_locked_by_token(token_addr) == 1800, 'Pre-claim locked != 1800');
+
+    set_block_timestamp(150);
+
+    let open_note_id = 0x9999;
+    let claim_params = ClaimParams {
+        payment_id, claim_preimage: claim_secret, note_id: open_note_id,
+    };
+
+    let deposits = cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+
+    assert(deposits.len() == 1, 'Must return 1 deposit note');
+    let deposit = *deposits.at(0);
+    assert(deposit.note_id == open_note_id, 'Returned note_id mismatch');
+    assert(deposit.token == token_addr, 'Returned token mismatch');
+    assert(deposit.amount == 1800, 'Returned amount mismatch');
+
+    let payment = cp.get_payment(payment_id);
+    assert(payment.state == payment_state::CLAIMED, 'State must be CLAIMED');
+    assert(cp.get_locked_by_token(token_addr) == 0, 'Post-claim locked must be 0');
+
+    let allowance = token.allowance(cp_addr, pool_address);
+    assert(allowance == 1800, 'Allowance to pool != 1800');
+}
+
+#[test]
+#[should_panic(expected: ('INVALID_CLAIM_SECRET', 'ENTRYPOINT_FAILED'))]
+fn test_claim_wrong_preimage_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 210);
+    let (token_addr, token) = deploy_mock_token(211);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(150);
+    let claim_params = ClaimParams { payment_id, claim_preimage: 0x999888, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('INVALID_CLAIM_SECRET', 'ENTRYPOINT_FAILED'))]
+fn test_claim_refund_preimage_fails_due_to_domain_separation() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 220);
+    let (token_addr, token) = deploy_mock_token(221);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let shared_secret = 0xabcdef;
+    let hashlock = compute_hashlock(shared_secret);
+    let refund_hash = compute_refund_hash(shared_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(150);
+
+    let claim_params = ClaimParams { payment_id, claim_preimage: refund_hash, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('CLAIM_TOO_EARLY', 'ENTRYPOINT_FAILED'))]
+fn test_claim_before_claim_after_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 230);
+    let (token_addr, token) = deploy_mock_token(231);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(99);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+fn test_claim_exactly_at_claim_after_succeeds() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 240);
+    let (token_addr, token) = deploy_mock_token(241);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(100);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    let deposits = cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+    assert(deposits.len() == 1, 'Claim at boundary must succeed');
+    assert(cp.get_payment(payment_id).state == payment_state::CLAIMED, 'Must be CLAIMED');
+}
+
+#[test]
+fn test_claim_before_expiry_succeeds() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 250);
+    let (token_addr, token) = deploy_mock_token(251);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(299);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    let deposits = cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+    assert(deposits.len() == 1, 'Claim before expiry must pass');
+}
+
+#[test]
+#[should_panic(expected: ('PAYMENT_EXPIRED', 'ENTRYPOINT_FAILED'))]
+fn test_claim_exactly_at_expiry_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 260);
+    let (token_addr, token) = deploy_mock_token(261);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(300);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('PAYMENT_EXPIRED', 'ENTRYPOINT_FAILED'))]
+fn test_claim_after_expiry_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 270);
+    let (token_addr, token) = deploy_mock_token(271);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(301);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+fn test_claim_no_expiry_payment_succeeds_at_any_future_time() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 280);
+    let (token_addr, token) = deploy_mock_token(281);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 0,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(999999);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    let deposits = cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+    assert(deposits.len() == 1, 'Must succeed with no expiry');
+    assert(cp.get_payment(payment_id).state == payment_state::CLAIMED, 'Must be CLAIMED');
+}
+
+#[test]
+#[should_panic(expected: ('PAYMENT_NOT_ACTIVE', 'ENTRYPOINT_FAILED'))]
+fn test_claim_uninitialized_payment_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (_, cp) = deploy_conditional_pay(pool_address, 290);
+
+    set_contract_address(pool_address);
+    let claim_params = ClaimParams { payment_id: 0x123999, claim_preimage: 0x123, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('PAYMENT_NOT_ACTIVE', 'ENTRYPOINT_FAILED'))]
+fn test_replayed_claim_reverts_and_cannot_reduce_liability_twice() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 300);
+    let (token_addr, token) = deploy_mock_token(301);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(150);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+    assert(cp.get_locked_by_token(token_addr) == 0, 'Liability must be 0');
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('APPROVAL_REQUIRED', 'ENTRYPOINT_FAILED'))]
+fn test_claim_with_configured_approver_and_unapproved_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 310);
+    let (token_addr, token) = deploy_mock_token(311);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let approver_address = contract_address(0x888);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: approver_address,
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(150);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('CALLER_NOT_POOL', 'ENTRYPOINT_FAILED'))]
+fn test_claim_unauthorized_caller_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 320);
+    let (token_addr, token) = deploy_mock_token(321);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    set_block_timestamp(150);
+    set_contract_address(contract_address(0xbad));
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+fn test_multi_token_claim_liability_isolation() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 330);
+    let (token_a, token_a_ctrl) = deploy_mock_token(331);
+    let (token_b, token_b_ctrl) = deploy_mock_token(332);
+
+    token_a_ctrl.set_balance(cp_addr, 5000);
+    token_b_ctrl.set_balance(cp_addr, 5000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let secret_a = 0x111aaa;
+    let secret_b = 0x222bbb;
+
+    let pa = CreateParams {
+        token: token_a,
+        amount: 1500,
+        hashlock: compute_hashlock(secret_a),
+        refund_hash: 0x111,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 1,
+    };
+    let id_a = cp.compute_payment_id(pa);
+    cp.privacy_invoke(ConditionalPayAction::Create(pa));
+
+    let pb = CreateParams {
+        token: token_b,
+        amount: 2500,
+        hashlock: compute_hashlock(secret_b),
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 2,
+    };
+    let _id_b = cp.compute_payment_id(pb);
+    cp.privacy_invoke(ConditionalPayAction::Create(pb));
+
+    assert(cp.get_locked_by_token(token_a) == 1500, 'Locked A != 1500');
+    assert(cp.get_locked_by_token(token_b) == 2500, 'Locked B != 2500');
+
+    set_block_timestamp(150);
+    cp
+        .privacy_invoke(
+            ConditionalPayAction::Claim(
+                ClaimParams { payment_id: id_a, claim_preimage: secret_a, note_id: 0xa },
+            ),
+        );
+
+    assert(cp.get_locked_by_token(token_a) == 0, 'Locked A must be 0');
+    assert(cp.get_locked_by_token(token_b) == 2500, 'Locked B must remain 2500');
+}
+
+#[test]
+fn test_claimed_terminal_state_and_solvency_invariant() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 340);
+    let (token_addr, token) = deploy_mock_token(341);
+
+    token.set_balance(cp_addr, 10000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let secret1 = 0x111;
+    let secret2 = 0x222;
+
+    let p1 = CreateParams {
+        token: token_addr,
+        amount: 3000,
+        hashlock: compute_hashlock(secret1),
+        refund_hash: 0x1,
+        claim_after: 100,
+        expires_at: 400,
+        approver: contract_address(0x0),
+        nonce: 1,
+    };
+    let id1 = cp.compute_payment_id(p1);
+    cp.privacy_invoke(ConditionalPayAction::Create(p1));
+
+    let p2 = CreateParams {
+        token: token_addr,
+        amount: 4000,
+        hashlock: compute_hashlock(secret2),
+        refund_hash: 0x2,
+        claim_after: 100,
+        expires_at: 400,
+        approver: contract_address(0x0),
+        nonce: 2,
+    };
+    let id2 = cp.compute_payment_id(p2);
+    cp.privacy_invoke(ConditionalPayAction::Create(p2));
+
+    assert(cp.get_locked_by_token(token_addr) == 7000, 'Initial locked != 7000');
+
+    set_block_timestamp(200);
+    cp
+        .privacy_invoke(
+            ConditionalPayAction::Claim(
+                ClaimParams { payment_id: id1, claim_preimage: secret1, note_id: 0x10 },
+            ),
+        );
+
+    let locked_after_claim1 = cp.get_locked_by_token(token_addr);
+    assert(locked_after_claim1 == 4000, 'Locked after claim != 4000');
+    assert(
+        locked_after_claim1 <= token.balance_of(cp_addr).try_into().unwrap(),
+        'Solvency invariant failed',
+    );
+
+    assert(cp.get_payment(id1).state == payment_state::CLAIMED, 'P1 must be CLAIMED');
+    assert(cp.get_payment(id2).state == payment_state::ACTIVE, 'P2 must remain ACTIVE');
+}
+
+#[test]
+fn test_full_settlement_transaction_boundary_simulation() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 400);
+    let (token_addr, token) = deploy_mock_token(401);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x555666;
+    let hashlock = compute_hashlock(claim_secret);
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 2000,
+        hashlock,
+        refund_hash: 0x111,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    assert(cp.get_locked_by_token(token_addr) == 2000, 'Pre-claim locked != 2000');
+    assert(token.balance_of(cp_addr) == 2000, 'Pre-claim balance != 2000');
+
+    set_block_timestamp(150);
+    let open_note_id = 0x777;
+    let deposits = cp
+        .privacy_invoke(
+            ConditionalPayAction::Claim(
+                ClaimParams { payment_id, claim_preimage: claim_secret, note_id: open_note_id },
+            ),
+        );
+
+    assert(deposits.len() == 1, 'Must return 1 deposit note');
+    assert(cp.get_payment(payment_id).state == payment_state::CLAIMED, 'State != CLAIMED');
+    assert(cp.get_locked_by_token(token_addr) == 0, 'Locked != 0');
+    assert(token.allowance(cp_addr, pool_address) == 2000, 'Allowance != 2000');
+
+    set_contract_address(pool_address);
+    let pulled = token.transfer_from(cp_addr, pool_address, 2000);
+    assert(pulled, 'transfer_from failed');
+
+    assert(token.allowance(cp_addr, pool_address) == 0, 'Post-settle allowance != 0');
+    assert(token.balance_of(cp_addr) == 0, 'Post-settle CP balance != 0');
+    assert(token.balance_of(pool_address) == 2000, 'Pool did not receive tokens');
+    assert(cp.get_locked_by_token(token_addr) == 0, 'Post-settle locked != 0');
+    assert(
+        cp.get_locked_by_token(token_addr) <= token.balance_of(cp_addr).try_into().unwrap(),
+        'Post-settle solvency failed',
+    );
+}
+
+#[test]
+#[should_panic(expected: ('ERC20_APPROVE_FAILED', 'ENTRYPOINT_FAILED'))]
+fn test_claim_erc20_approve_returning_false_reverts() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 410);
+    let (token_addr, token) = deploy_mock_token(411);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    token.set_fail_approve(true);
+
+    set_block_timestamp(150);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('INVALID_CLAIM_SECRET', 'ENTRYPOINT_FAILED'))]
+fn test_claim_wrong_payment_id_cannot_claim_other_payment() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 420);
+    let (token_addr, token) = deploy_mock_token(421);
+
+    token.set_balance(cp_addr, 5000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let secret1 = 0x111111;
+    let secret2 = 0x222222;
+
+    let p1 = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock: compute_hashlock(secret1),
+        refund_hash: 0x1,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 1,
+    };
+    let id1 = cp.compute_payment_id(p1);
+    cp.privacy_invoke(ConditionalPayAction::Create(p1));
+
+    let p2 = CreateParams {
+        token: token_addr,
+        amount: 2000,
+        hashlock: compute_hashlock(secret2),
+        refund_hash: 0x2,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 2,
+    };
+    let _id2 = cp.compute_payment_id(p2);
+    cp.privacy_invoke(ConditionalPayAction::Create(p2));
+
+    set_block_timestamp(150);
+
+    let claim_params = ClaimParams { payment_id: id1, claim_preimage: secret2, note_id: 0x1 };
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+fn test_failed_claim_state_preservation() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 430);
+    let (token_addr, token) = deploy_mock_token(431);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    let payment_before = cp.get_payment(payment_id);
+    assert(payment_before.state == payment_state::ACTIVE, 'State must be ACTIVE');
+    assert(cp.get_locked_by_token(token_addr) == 1000, 'Locked must be 1000');
+    assert(token.allowance(cp_addr, pool_address) == 0, 'Allowance must be 0');
+
+    let uninit_payment = cp.get_payment(0x999999);
+    assert(uninit_payment.state == payment_state::UNINITIALIZED, 'State must be UNINITIALIZED');
+}
+
+// -----------------------------------------------------------------------------
+// NEW GAP-CLOSURE TESTS (Phase 1C)
+// -----------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected: ('PAYMENT_NOT_ACTIVE', 'ENTRYPOINT_FAILED'))]
+fn test_refunded_payment_cannot_be_claimed() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_test_state_conditional_pay(pool_address, 500);
+    let (token_addr, token) = deploy_mock_token(501);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(150);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let refund_hash = compute_refund_hash(0x654321);
+    let payment_id = 0x501;
+
+    // Construct a payment fixture in REFUNDED state
+    let refunded_payment = Payment {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        approved: false,
+        state: payment_state::REFUNDED,
+    };
+    cp.set_payment_for_test(payment_id, refunded_payment);
+    cp.set_locked_by_token_for_test(token_addr, 0);
+
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    // Must revert with PAYMENT_NOT_ACTIVE
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('INSUFFICIENT_LOCKED_AMOUNT', 'ENTRYPOINT_FAILED'))]
+fn test_claim_insufficient_locked_amount_reverts_without_mutation() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_test_state_conditional_pay(pool_address, 510);
+    let (token_addr, token) = deploy_mock_token(511);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(150);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let refund_hash = compute_refund_hash(0x654321);
+    let payment_id = 0x502;
+
+    // Construct an ACTIVE payment of amount 1000 where locked_by_token is corrupted to 500
+    let active_payment = Payment {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        approved: false,
+        state: payment_state::ACTIVE,
+    };
+    cp.set_payment_for_test(payment_id, active_payment);
+    cp.set_locked_by_token_for_test(token_addr, 500); // Less than payment.amount (1000)
+
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    // Must revert with INSUFFICIENT_LOCKED_AMOUNT
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+#[should_panic(expected: ('ERC20_APPROVE_REVERT', 'ENTRYPOINT_FAILED', 'ENTRYPOINT_FAILED'))]
+fn test_claim_erc20_approve_revert_rolls_back() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 520);
+    let (token_addr, token) = deploy_mock_token(521);
+
+    token.set_balance(cp_addr, 2000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1000,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    // Configure token mock to revert on approve
+    token.set_revert_approve(true);
+
+    set_block_timestamp(150);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+
+    // Must revert with ERC20_APPROVE_REVERT
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+}
+
+#[test]
+fn test_claim_does_not_accumulate_existing_allowance() {
+    let pool_address: ContractAddress = contract_address(0x111);
+    let (cp_addr, cp) = deploy_conditional_pay(pool_address, 530);
+    let (token_addr, token) = deploy_mock_token(531);
+
+    token.set_balance(cp_addr, 5000);
+    set_block_timestamp(50);
+    set_contract_address(pool_address);
+
+    // Set pre-existing allowance from CP to pool of 500
+    token.set_allowance_for_test(cp_addr, pool_address, 500);
+    assert(token.allowance(cp_addr, pool_address) == 500, 'Initial allowance != 500');
+
+    let claim_secret = 0x123456;
+    let hashlock = compute_hashlock(claim_secret);
+    let create_params = CreateParams {
+        token: token_addr,
+        amount: 1200,
+        hashlock,
+        refund_hash: 0x222,
+        claim_after: 100,
+        expires_at: 300,
+        approver: contract_address(0x0),
+        nonce: 0x1,
+    };
+    let payment_id = cp.compute_payment_id(create_params);
+    cp.privacy_invoke(ConditionalPayAction::Create(create_params));
+
+    // Advance time and claim
+    set_block_timestamp(150);
+    let claim_params = ClaimParams { payment_id, claim_preimage: claim_secret, note_id: 0x1 };
+    cp.privacy_invoke(ConditionalPayAction::Claim(claim_params));
+
+    // Allowance must be exactly 1200 (overwritten, NOT accumulated to 1700)
+    let post_claim_allowance = token.allowance(cp_addr, pool_address);
+    assert(post_claim_allowance == 1200, 'Allowance must be 1200 not 1700');
+
+    // Simulated pool pull consumes 1200
+    set_contract_address(pool_address);
+    let pulled = token.transfer_from(cp_addr, pool_address, 1200);
+    assert(pulled, 'transfer_from failed');
+    assert(token.allowance(cp_addr, pool_address) == 0, 'Post-pull allowance != 0');
 }

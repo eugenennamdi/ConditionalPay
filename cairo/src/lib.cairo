@@ -124,8 +124,9 @@ pub mod ConditionalPay {
     };
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
     use super::{
-        ConditionalPayAction, CreateParams, IConditionalPay, IErc20Dispatcher,
-        IErc20DispatcherTrait, OpenNoteDeposit, Payment, compute_payment_id, payment_state,
+        ClaimParams, ConditionalPayAction, CreateParams, IConditionalPay, IErc20Dispatcher,
+        IErc20DispatcherTrait, OpenNoteDeposit, Payment, compute_hashlock, compute_payment_id,
+        payment_state,
     };
 
     pub mod errors {
@@ -135,6 +136,13 @@ pub mod ConditionalPay {
         pub const INVALID_EXPIRY: felt252 = 'INVALID_EXPIRY';
         pub const PAYMENT_ALREADY_EXISTS: felt252 = 'PAYMENT_ALREADY_EXISTS';
         pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
+        pub const PAYMENT_NOT_ACTIVE: felt252 = 'PAYMENT_NOT_ACTIVE';
+        pub const INVALID_CLAIM_SECRET: felt252 = 'INVALID_CLAIM_SECRET';
+        pub const CLAIM_TOO_EARLY: felt252 = 'CLAIM_TOO_EARLY';
+        pub const PAYMENT_EXPIRED: felt252 = 'PAYMENT_EXPIRED';
+        pub const APPROVAL_REQUIRED: felt252 = 'APPROVAL_REQUIRED';
+        pub const INSUFFICIENT_LOCKED_AMOUNT: felt252 = 'INSUFFICIENT_LOCKED_AMOUNT';
+        pub const ERC20_APPROVE_FAILED: felt252 = 'ERC20_APPROVE_FAILED';
     }
 
     #[storage]
@@ -148,6 +156,7 @@ pub mod ConditionalPay {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         PaymentCreated: PaymentCreated,
+        PaymentClaimed: PaymentClaimed,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -162,6 +171,12 @@ pub mod ConditionalPay {
         pub expires_at: u64,
         pub approver: ContractAddress,
         pub nonce: felt252,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentClaimed {
+        #[key]
+        pub payment_id: felt252,
     }
 
     #[constructor]
@@ -196,7 +211,7 @@ pub mod ConditionalPay {
 
             match action {
                 ConditionalPayAction::Create(params) => { self.handle_create(params) },
-                ConditionalPayAction::Claim(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
+                ConditionalPayAction::Claim(params) => { self.handle_claim(params) },
                 ConditionalPayAction::Refund(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
             }
         }
@@ -266,6 +281,56 @@ pub mod ConditionalPay {
 
             // 7. CREATE returns empty OpenNoteDeposit span (no output note created)
             array![].span()
+        }
+
+        fn handle_claim(ref self: ContractState, params: ClaimParams) -> Span<OpenNoteDeposit> {
+            // 1. Load payment and require ACTIVE
+            let mut payment = self.payments.read(params.payment_id);
+            assert(payment.state == payment_state::ACTIVE, errors::PAYMENT_NOT_ACTIVE);
+
+            // 2. Verify claim preimage against hashlock using domain-separated Poseidon
+            let computed_hash = compute_hashlock(params.claim_preimage);
+            assert(computed_hash == payment.hashlock, errors::INVALID_CLAIM_SECRET);
+
+            // 3. Timing checks
+            let now = get_block_timestamp();
+            assert(now >= payment.claim_after, errors::CLAIM_TOO_EARLY);
+            if payment.expires_at != 0 {
+                assert(now < payment.expires_at, errors::PAYMENT_EXPIRED);
+            }
+
+            // 4. Approval gate (if approver is configured, payment must be approved)
+            let zero_address: ContractAddress = 0x0.try_into().unwrap();
+            if payment.approver != zero_address {
+                assert(payment.approved, errors::APPROVAL_REQUIRED);
+            }
+
+            // 5. Liability verification & reduction
+            let current_locked = self.locked_by_token.read(payment.token);
+            assert(current_locked >= payment.amount, errors::INSUFFICIENT_LOCKED_AMOUNT);
+            let new_locked = current_locked - payment.amount;
+
+            // 6. Transition state to CLAIMED (terminal) & write reduced liability
+            payment.state = payment_state::CLAIMED;
+            self.payments.write(params.payment_id, payment);
+            self.locked_by_token.write(payment.token, new_locked);
+
+            // 7. ERC-20 approval to the stored STRK20 pool for exact payment amount
+            let pool = self.strk20_pool.read();
+            let erc20 = IErc20Dispatcher { contract_address: payment.token };
+            let approved = erc20.approve(pool, payment.amount.into());
+            assert(approved, errors::ERC20_APPROVE_FAILED);
+
+            // 8. Emit PaymentClaimed event
+            self.emit(PaymentClaimed { payment_id: params.payment_id });
+
+            // 9. Return one OpenNoteDeposit for private note settlement
+            array![
+                OpenNoteDeposit {
+                    note_id: params.note_id, token: payment.token, amount: payment.amount,
+                },
+            ]
+                .span()
         }
     }
 }
