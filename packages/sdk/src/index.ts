@@ -8,3 +8,5 @@ export * from './hashing.js';
 export * from './encoding.js';
 export * from './actions.js';
 export * from './approve.js';
+export * from './query.js';
+export * from './events.js';
