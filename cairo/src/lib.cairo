@@ -113,11 +113,11 @@ pub trait IConditionalPay<TState> {
     fn get_locked_by_token(self: @TState, token: ContractAddress) -> u128;
     fn compute_payment_id(self: @TState, params: CreateParams) -> felt252;
     fn privacy_invoke(ref self: TState, action: ConditionalPayAction) -> Span<OpenNoteDeposit>;
+    fn approve(ref self: TState, payment_id: felt252);
 }
 
 #[starknet::contract]
 pub mod ConditionalPay {
-    use core::panic_with_felt252;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
@@ -125,8 +125,8 @@ pub mod ConditionalPay {
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
     use super::{
         ClaimParams, ConditionalPayAction, CreateParams, IConditionalPay, IErc20Dispatcher,
-        IErc20DispatcherTrait, OpenNoteDeposit, Payment, compute_hashlock, compute_payment_id,
-        payment_state,
+        IErc20DispatcherTrait, OpenNoteDeposit, Payment, RefundParams, compute_hashlock,
+        compute_payment_id, compute_refund_hash, payment_state,
     };
 
     pub mod errors {
@@ -143,6 +143,12 @@ pub mod ConditionalPay {
         pub const APPROVAL_REQUIRED: felt252 = 'APPROVAL_REQUIRED';
         pub const INSUFFICIENT_LOCKED_AMOUNT: felt252 = 'INSUFFICIENT_LOCKED_AMOUNT';
         pub const ERC20_APPROVE_FAILED: felt252 = 'ERC20_APPROVE_FAILED';
+        pub const INVALID_REFUND_SECRET: felt252 = 'INVALID_REFUND_SECRET';
+        pub const NO_EXPIRY: felt252 = 'NO_EXPIRY';
+        pub const PAYMENT_NOT_EXPIRED: felt252 = 'PAYMENT_NOT_EXPIRED';
+        pub const CALLER_NOT_APPROVER: felt252 = 'CALLER_NOT_APPROVER';
+        pub const NO_APPROVER_CONFIGURED: felt252 = 'NO_APPROVER_CONFIGURED';
+        pub const INVALID_STRK20_POOL: felt252 = 'INVALID_STRK20_POOL';
     }
 
     #[storage]
@@ -157,6 +163,8 @@ pub mod ConditionalPay {
     pub enum Event {
         PaymentCreated: PaymentCreated,
         PaymentClaimed: PaymentClaimed,
+        PaymentRefunded: PaymentRefunded,
+        PaymentApproved: PaymentApproved,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -179,8 +187,22 @@ pub mod ConditionalPay {
         pub payment_id: felt252,
     }
 
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentRefunded {
+        #[key]
+        pub payment_id: felt252,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentApproved {
+        #[key]
+        pub payment_id: felt252,
+    }
+
     #[constructor]
     pub fn constructor(ref self: ContractState, strk20_pool: ContractAddress) {
+        let zero_address: ContractAddress = 0x0.try_into().unwrap();
+        assert(strk20_pool != zero_address, errors::INVALID_STRK20_POOL);
         self.strk20_pool.write(strk20_pool);
     }
 
@@ -212,8 +234,24 @@ pub mod ConditionalPay {
             match action {
                 ConditionalPayAction::Create(params) => { self.handle_create(params) },
                 ConditionalPayAction::Claim(params) => { self.handle_claim(params) },
-                ConditionalPayAction::Refund(_) => { panic_with_felt252(errors::NOT_IMPLEMENTED) },
+                ConditionalPayAction::Refund(params) => { self.handle_refund(params) },
             }
+        }
+
+        fn approve(ref self: ContractState, payment_id: felt252) {
+            let mut payment = self.payments.read(payment_id);
+            assert(payment.state == payment_state::ACTIVE, errors::PAYMENT_NOT_ACTIVE);
+
+            let zero_address: ContractAddress = 0x0.try_into().unwrap();
+            assert(payment.approver != zero_address, errors::NO_APPROVER_CONFIGURED);
+
+            let caller = get_caller_address();
+            assert(caller == payment.approver, errors::CALLER_NOT_APPROVER);
+
+            payment.approved = true;
+            self.payments.write(payment_id, payment);
+
+            self.emit(PaymentApproved { payment_id });
         }
     }
 
@@ -325,6 +363,48 @@ pub mod ConditionalPay {
             self.emit(PaymentClaimed { payment_id: params.payment_id });
 
             // 9. Return one OpenNoteDeposit for private note settlement
+            array![
+                OpenNoteDeposit {
+                    note_id: params.note_id, token: payment.token, amount: payment.amount,
+                },
+            ]
+                .span()
+        }
+
+        fn handle_refund(ref self: ContractState, params: RefundParams) -> Span<OpenNoteDeposit> {
+            // 1. Load payment and require ACTIVE
+            let mut payment = self.payments.read(params.payment_id);
+            assert(payment.state == payment_state::ACTIVE, errors::PAYMENT_NOT_ACTIVE);
+
+            // 2. Verify refund secret against refund_hash using domain-separated Poseidon
+            let computed_hash = compute_refund_hash(params.refund_preimage);
+            assert(computed_hash == payment.refund_hash, errors::INVALID_REFUND_SECRET);
+
+            // 3. Timing checks: expiry must be configured and current time >= expires_at
+            assert(payment.expires_at != 0, errors::NO_EXPIRY);
+            let now = get_block_timestamp();
+            assert(now >= payment.expires_at, errors::PAYMENT_NOT_EXPIRED);
+
+            // 4. Liability verification & reduction
+            let current_locked = self.locked_by_token.read(payment.token);
+            assert(current_locked >= payment.amount, errors::INSUFFICIENT_LOCKED_AMOUNT);
+            let new_locked = current_locked - payment.amount;
+
+            // 5. Transition state to REFUNDED (terminal) & write reduced liability
+            payment.state = payment_state::REFUNDED;
+            self.payments.write(params.payment_id, payment);
+            self.locked_by_token.write(payment.token, new_locked);
+
+            // 6. ERC-20 approval to the stored STRK20 pool for exact payment amount
+            let pool = self.strk20_pool.read();
+            let erc20 = IErc20Dispatcher { contract_address: payment.token };
+            let approved = erc20.approve(pool, payment.amount.into());
+            assert(approved, errors::ERC20_APPROVE_FAILED);
+
+            // 7. Emit PaymentRefunded event
+            self.emit(PaymentRefunded { payment_id: params.payment_id });
+
+            // 8. Return one OpenNoteDeposit for private note settlement
             array![
                 OpenNoteDeposit {
                     note_id: params.note_id, token: payment.token, amount: payment.amount,
