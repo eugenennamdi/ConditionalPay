@@ -257,6 +257,32 @@ describe('STRK20 Wallet Action Builders', () => {
       assert.equal(calldataItems.length, 4);
       assert.equal(calldataItems[3], OPEN_NOTE_ID_0);
     });
+
+    it('proves two independent CREATE action batches compose into a valid 4-action STRK20 batch', () => {
+      const createParamsB: CreateParams = {
+        ...createParams,
+        hashlock: '0x30c804f6f6b24dd19f29ff4bc2b54f1f44cb336a90dca293b80b413c0599ac5',
+        refund_hash: '0x7b52c408bddeaaf8cc36a4c6c3bfd24c7a0e7b241b9fcad83c2c8173cd01261',
+        nonce: '2',
+      };
+
+      const actionsA = buildCreateActions(conditionalPay, createParams);
+      const actionsB = buildCreateActions(conditionalPay, createParamsB);
+
+      // Compose interleaved funding & invocation
+      const batch: STRK20_ACTION[] = [...actionsA, ...actionsB];
+
+      assert.equal(batch.length, 4, 'Multi-CREATE batch contains exactly 4 application actions');
+      assert.equal(batch[0].type, 'withdraw');
+      assert.equal(batch[1].type, 'invoke');
+      assert.equal(batch[2].type, 'withdraw');
+      assert.equal(batch[3].type, 'invoke');
+
+      type WalletStrk20InvokeParams =
+        RpcTypeToMessageMap['wallet_strk20InvokeTransaction']['params'];
+      const multiCreatePayload: WalletStrk20InvokeParams = { actions: batch };
+      assert.equal(multiCreatePayload.actions.length, 4);
+    });
   });
 
   describe('Placeholder Safety & Invariant Tests', () => {

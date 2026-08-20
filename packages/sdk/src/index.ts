@@ -10,3 +10,5 @@ export * from './actions.js';
 export * from './approve.js';
 export * from './query.js';
 export * from './events.js';
+export * from './credentials.js';
+export * from './plan.js';
