@@ -14,6 +14,9 @@ import {
 import { computePaymentId, normalizeFelt } from '../src/hashing.js';
 import { buildClaimActions, buildRefundActions } from '../src/actions.js';
 import { CreateParams, Payment, PaymentState } from '../src/types.js';
+import type { CallContractProvider } from '../src/query.js';
+
+type ContractCall = Parameters<CallContractProvider['callContract']>[0];
 
 describe('ConditionalPay Query Layer', () => {
   const conditionalPay = '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -108,10 +111,10 @@ describe('ConditionalPay Query Layer', () => {
 
   describe('getPayment', () => {
     it('calls get_payment entrypoint with exact calldata and decodes ACTIVE payment', async () => {
-      let executedCall: any = null;
+      let executedCall!: ContractCall;
 
       const mockProvider = {
-        async callContract(call: any) {
+        async callContract(call: ContractCall) {
           executedCall = call;
           return [
             token, // 0: token
@@ -230,9 +233,9 @@ describe('ConditionalPay Query Layer', () => {
 
   describe('getLockedByToken', () => {
     it('calls get_locked_by_token and decodes u128 balance to bigint', async () => {
-      let executedCall: any = null;
+      let executedCall!: ContractCall;
       const mockProvider = {
-        async callContract(call: any) {
+        async callContract(call: ContractCall) {
           executedCall = call;
           return ['0xde0b6b3a7640000']; // 1 STRK
         },
@@ -271,9 +274,9 @@ describe('ConditionalPay Query Layer', () => {
 
   describe('getStrk20Pool', () => {
     it('calls get_strk20_pool and returns normalized contract address', async () => {
-      let executedCall: any = null;
+      let executedCall!: ContractCall;
       const mockProvider = {
-        async callContract(call: any) {
+        async callContract(call: ContractCall) {
           executedCall = call;
           return [poolAddress];
         },
@@ -313,10 +316,10 @@ describe('ConditionalPay Query Layer', () => {
   describe('computePaymentIdOnchain & Local Equality Verification', () => {
     it('encodes CreateParams into 8-element calldata and matches local computePaymentId', async () => {
       const localPaymentId = computePaymentId(mockCreateParams);
-      let executedCall: any = null;
+      let executedCall!: ContractCall;
 
       const mockProvider = {
-        async callContract(call: any) {
+        async callContract(call: ContractCall) {
           executedCall = call;
           return [localPaymentId];
         },
@@ -329,6 +332,7 @@ describe('ConditionalPay Query Layer', () => {
       );
 
       assert.equal(executedCall.entrypoint, 'compute_payment_id');
+      assert.ok(executedCall.calldata);
       assert.equal(executedCall.calldata.length, 8, 'compute_payment_id takes 8 felts');
       assert.equal(onchainPaymentId, localPaymentId);
     });

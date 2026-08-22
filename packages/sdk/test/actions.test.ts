@@ -27,8 +27,11 @@ import {
 
 describe('STRK20 Wallet Action Builders', () => {
   const conditionalPay = '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const mainnetConditionalPay =
+    '0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483';
   const token = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d';
   const recipient = '0x053b40a647cedfca6ca84f542a0fe3673603190d52737e333680420fa390776a';
+  const walletApiFelt = /^0x(0|[a-fA-F1-9][a-fA-F0-9]{0,62})$/;
 
   const createParams: CreateParams = {
     token,
@@ -90,6 +93,50 @@ describe('STRK20 Wallet Action Builders', () => {
             'CREATE calldata must not contain open-note placeholder',
           );
         }
+      }
+    });
+
+    it('canonicalizes every Mainnet CREATE felt and leaves exactly one final invoke', () => {
+      const actions = buildCreateActions(mainnetConditionalPay, createParams);
+
+      assert.deepEqual(
+        actions.map((action) => action.type),
+        ['withdraw', 'invoke'],
+        'CREATE ordering must be exactly [withdraw, invoke]',
+      );
+      assert.equal(
+        actions.filter((action) => action.type === 'invoke').length,
+        1,
+        'CREATE must contain exactly one invoke',
+      );
+      assert.equal(actions.at(-1)?.type, 'invoke', 'CREATE invoke must be final');
+
+      const [withdraw, invoke] = actions;
+      assert.equal(
+        withdraw.token,
+        '0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d',
+      );
+      assert.notEqual(withdraw.token, token, 'STRK must not retain its padded encoding');
+      assert.equal(
+        withdraw.recipient,
+        '0x166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483',
+      );
+      assert.equal(invoke.contract, withdraw.recipient);
+      assert.notEqual(
+        invoke.contract,
+        mainnetConditionalPay,
+        'ConditionalPay must not retain its padded encoding',
+      );
+
+      const numericFelts = [
+        withdraw.token,
+        withdraw.amount,
+        withdraw.recipient,
+        invoke.contract,
+        ...invoke.calldata,
+      ];
+      for (const felt of numericFelts) {
+        assert.match(felt, walletApiFelt, `non-canonical Wallet API felt: ${felt}`);
       }
     });
 

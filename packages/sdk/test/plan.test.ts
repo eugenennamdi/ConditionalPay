@@ -16,7 +16,7 @@ import {
   prepareTx2Claim,
   prepareTx3Refund,
 } from '../src/plan.js';
-import { validateContractAddress, validateFelt } from '../src/encoding.js';
+import { validateFelt } from '../src/encoding.js';
 import { normalizeFelt } from '../src/hashing.js';
 import { OPEN_NOTE_ID_0 } from '../src/types.js';
 
