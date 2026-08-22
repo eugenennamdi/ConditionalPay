@@ -361,6 +361,67 @@
 
 /* --- Tabbed action interface (Umbra-style) ------------------------------ */
 .panel { width: min(520px, calc(100vw - 32px)); margin: 0 auto; }
+.executionUtility {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--pink-soft-2);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fff 0%, var(--pink-soft) 100%);
+}
+.utilityEyebrow {
+  color: var(--pink-text);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+}
+.utilityTitle {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.utilityCopy {
+  margin: 9px 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.utilityGrid {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.utilityGrid > div {
+  display: grid;
+  grid-template-columns: minmax(105px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+.utilityGrid span { color: var(--muted); }
+.utilityGrid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: var(--font-mono-ui), monospace;
+  font-weight: 600;
+}
+.utilityStatus,
+.utilityStatusError {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.utilityStatusError { background: #fdeceb; color: var(--danger); }
+.executionUtility .btnCta + .btnCta { margin-top: 10px; }
 
 .tabs {
   display: flex;

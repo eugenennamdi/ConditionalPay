@@ -7,11 +7,12 @@
   ],
   "scripts": {
     "dev": "next dev --webpack",
+    "prebuild": "npm run build --workspace @conditionalpay/sdk",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "test": "npm run check:test-vectors && npm run test:frontend && npm run test:sdk",
-    "test:frontend": "node test/regression-duplicate-guard.test.mjs",
+    "test:frontend": "node --test test/*.test.mjs",
     "test:sdk": "tsc -p packages/sdk/tsconfig.json && node --test packages/sdk/dist/test/*.test.js",
     "generate:test-vectors": "node scripts/generate-cairo-vectors.mjs",
     "check:test-vectors": "node scripts/generate-cairo-vectors.mjs --check"

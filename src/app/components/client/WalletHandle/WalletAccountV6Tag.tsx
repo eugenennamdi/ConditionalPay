@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { hash, json, num, shortString, validateAndParseAddress, type STRK20_ACTION } from "starknet";
+import { buildCreateActions } from "@conditionalpay/sdk";
 import styles from "../../../uni.module.css";
 import * as constants from "@/utils/constants";
 import { useStoreWallet } from "../../Wallet/walletContext";
 import { useFrontendProvider } from "../provider/providerContext";
 import { StrkCoin } from "../../TokenIcons";
 import SelectWallet from "./SelectWallet";
+import PaymentAClaimExecutionPanel from "./PaymentAClaimExecutionPanel";
+import PaymentBCreateExecutionPanel from "./PaymentBCreateExecutionPanel";
+import PaymentBRefundExecutionPanel from "./PaymentBRefundExecutionPanel";
+import { PAYMENT_B_TX3_CONFIGURATION } from "./paymentBTx3Configuration";
+import { isResolvedMainnetNetwork } from "./paymentBCreateExecution";
 
 // DEMO: all actions use one token (STRK). Swap constants.addrSTRK for your token,
 // or make the token a user selection.
@@ -17,6 +23,26 @@ const TOKEN = constants.addrSTRK;
 const TEN_STRK = 10n * 10n ** 18n;
 const FIVE_STRK = 5n * 10n ** 18n;
 const ONE_STRK = 1n * 10n ** 18n;
+const CONDITIONAL_PAY_ADDRESS =
+  "0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483";
+const PAYMENT_A_AMOUNT = 100000000000000000n;
+const PAYMENT_A_HASHLOCK =
+  "0x7be05eb23f518758d26904b9b19f45f77a7780bb74444601e60ee92ef0c4d30";
+const PAYMENT_A_REFUND_HASH =
+  "0x640134521d0fd57a67dab470e68a55d7891407d3a2bf1007b0ad774a381e996";
+const PAYMENT_A_EXPIRES_AT = 1787508143n;
+const PAYMENT_A_NONCE = 0x65dc8461cd2085cc610705accf7bf8b2n;
+
+let strk20WalletInvocationCount = 0;
+
+function createWalletDiagnosticRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  const random = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(random);
+  return Array.from(random, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 // Format a felt amount (STRK, 18 decimals) as a human STRK string ("10", "1.5").
 function fmtStrk(amount: bigint): string {
@@ -141,8 +167,9 @@ function errorResult(msg: string): ActionResult {
 }
 
 // Tabs - one STRK20 action each (Umbra-style single-action interface).
-type TabKey = "shield" | "send" | "unshield" | "echo" | "balances";
+type TabKey = "create" | "shield" | "send" | "unshield" | "echo" | "balances";
 const TABS: { key: TabKey; label: string }[] = [
+  { key: "create", label: "CREATE" },
   { key: "shield", label: "Shield" },
   { key: "send", label: "Send" },
   { key: "unshield", label: "Unshield" },
@@ -157,8 +184,6 @@ export default function WalletAccountV6Tag() {
   const myWalletAccount = useStoreWallet((state) => state.myWalletAccount);
   const connectedAddress = useStoreWallet((state) => state.address);
   const isConnected = useStoreWallet((state) => state.isConnected);
-  const chain = useStoreWallet((state) => state.chain);
-  const [chainIdWA, setChainIdWA] = useState<string>(chain);
 
   // STRK20 privacy pool is available on Mainnet (index 0) and Sepolia (index 2).
   const networkName = constants.Strk20Networks[myFrontendProviderIndex];
@@ -174,6 +199,10 @@ export default function WalletAccountV6Tag() {
   })();
 
   // Per-action result - structured, rendered as a readable receipt card.
+  const [resultCreate, setResultCreate] = useState<ActionResult | null>(null);
+  const [resultCreateB, setResultCreateB] = useState<ActionResult | null>(null);
+  const [resultClaim, setResultClaim] = useState<ActionResult | null>(null);
+  const [resultRefund, setResultRefund] = useState<ActionResult | null>(null);
   const [resultBalances, setResultBalances] = useState<ActionResult | null>(null);
   const [resultShield, setResultShield] = useState<ActionResult | null>(null);
   const [resultUnshield, setResultUnshield] = useState<ActionResult | null>(null);
@@ -185,7 +214,7 @@ export default function WalletAccountV6Tag() {
   const [resultDeploy, setResultDeploy] = useState<ActionResult | null>(null);
   const [deploying, setDeploying] = useState<boolean>(false);
   // Active action tab (Umbra-style single-action interface).
-  const [tab, setTab] = useState<TabKey>("shield");
+  const [tab, setTab] = useState<TabKey>("create");
   // Block maturity tracker for STRK20 notes (requires latestBlock - lastTxBlock >= 10)
   const [lastTxBlock, setLastTxBlock] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
@@ -217,23 +246,15 @@ export default function WalletAccountV6Tag() {
     };
   }, [myFrontendProviderIndex, isStrk20Network]);
 
-  const getWAchainId = () => {
-    myWalletAccount?.provider
-      .getChainId()
-      .then((result: any) => setChainIdWA(result.toString()));
-  };
-
-  useEffect(() => {
-    getWAchainId();
-  }, [myFrontendProviderIndex, chain]);
-
   // Submit STRK20 actions through the WalletAccountV6 instance, show the tx hash, then
   // wait for the receipt (privacy-pool txs verify a STARK proof on-chain - long budget).
   // Returns the tx hash on success, or undefined on error.
   async function submit(
     actions: STRK20_ACTION[],
     setResult: (r: ActionResult) => void,
-    amountLabel: string
+    amountLabel: string,
+    onWalletSettled?: () => void,
+    sensitiveWalletErrors = false,
   ): Promise<string | undefined> {
     // Synchronous lock check - reject concurrent clicks immediately
     if (isSubmittingRef.current) {
@@ -251,11 +272,30 @@ export default function WalletAccountV6Tag() {
       }
       let txH: string;
       try {
+        const diagnosticRequestId = createWalletDiagnosticRequestId();
+        strk20WalletInvocationCount += 1;
+        console.info("[ConditionalPay Wallet API boundary]", {
+          invocationCount: strk20WalletInvocationCount,
+          requestId: diagnosticRequestId,
+          timestamp: new Date().toISOString(),
+          method: "strk20InvokeTransaction",
+          actionCount: actions.length,
+          actionTypes: actions.map((action) => action.type),
+        });
         const r = await myWalletAccount.strk20InvokeTransaction(actions);
         txH = r.transaction_hash;
       } catch (error: any) {
-        setResult(errorResult(error?.message ?? error?.toString?.() ?? String(error)));
+        setResult(
+          errorResult(
+            sensitiveWalletErrors
+              ? "Wallet request failed or was rejected."
+              : error?.message ?? error?.toString?.() ?? String(error),
+          ),
+        );
         return undefined;
+      } finally {
+        actions = [];
+        onWalletSettled?.();
       }
       setSubmittingPhase("Waiting for L2 confirmation…");
       setResult({
@@ -285,7 +325,9 @@ export default function WalletAccountV6Tag() {
           status: "error",
           title: "Could not confirm transaction",
           rows: [{ label: "Transaction", value: shortHex(txH), hash: txH }],
-          note: error?.message ?? error?.toString?.() ?? String(error),
+          note: sensitiveWalletErrors
+            ? "Receipt polling failed without exposing secret-bearing request data."
+            : error?.message ?? error?.toString?.() ?? String(error),
         });
         return undefined;
       }
@@ -439,6 +481,46 @@ export default function WalletAccountV6Tag() {
     setVerdictComplex(await verifyEcho(txH));
   };
 
+  // ConditionalPay TX1 (CREATE Payment A - 24h)
+  const handleCreatePaymentA = async () => {
+    setResultCreate(null);
+    const actions = buildCreateActions(CONDITIONAL_PAY_ADDRESS, {
+      token: TOKEN,
+      amount: PAYMENT_A_AMOUNT,
+      hashlock: PAYMENT_A_HASHLOCK,
+      refund_hash: PAYMENT_A_REFUND_HASH,
+      claim_after: 0n,
+      expires_at: PAYMENT_A_EXPIRES_AT,
+      approver: "0x0",
+      nonce: PAYMENT_A_NONCE,
+    });
+    await submit(actions, setResultCreate, "0.1 STRK (Payment A)");
+  };
+
+  const executePreparedPaymentAClaim = (
+    actions: STRK20_ACTION[],
+    onWalletSettled: () => void,
+  ) => {
+    setResultClaim(null);
+    return submit(actions, setResultClaim, "0.1 STRK (Payment A CLAIM)", onWalletSettled, true);
+  };
+
+  const executePreparedPaymentBCreate = (
+    actions: STRK20_ACTION[],
+    onWalletSettled: () => void,
+  ) => {
+    setResultCreateB(null);
+    return submit(actions, setResultCreateB, "0.1 STRK (Payment B CREATE)", onWalletSettled);
+  };
+
+  const executePreparedPaymentBRefund = (
+    actions: STRK20_ACTION[],
+    onWalletSettled: () => void,
+  ) => {
+    setResultRefund(null);
+    return submit(actions, setResultRefund, "0.1 STRK (Payment B REFUND)", onWalletSettled, true);
+  };
+
   // Fetch the tx receipt and verify the helper's Invoked event: the open note was filled
   // with the 5 STRK we withdrew. Returns a pass/fail verdict (never throws).
   async function verifyEcho(txHash: string): Promise<Verdict> {
@@ -510,6 +592,9 @@ export default function WalletAccountV6Tag() {
     ? validateAndParseAddress(myWalletAccount.address)
     : "";
   const shortWallet = walletAddr ? `${walletAddr.slice(0, 6)}…${walletAddr.slice(-4)}` : "-";
+  // The same resolved network name drives both the visible badge and TX3 readiness.
+  // Raw wallet/provider chain representations are resolved once by SelectWallet.
+  const isMainnet = isResolvedMainnetNetwork(networkName);
 
   // Voyager explorer link for a tx hash on the current network.
   const explorerTxUrl = (h: string) =>
@@ -565,6 +650,7 @@ export default function WalletAccountV6Tag() {
     TabKey,
     { label: string; value: string; token: string; hint: string; cta: string; onRun: () => void; result: ActionResult | null; disabled: boolean }
   > = {
+    create: { label: "ConditionalPay CREATE (Payment A)", value: "0.1", token: "STRK", hint: "Create Payment A with 24-hour expiry", cta: "Execute CREATE (TX1)", onRun: handleCreatePaymentA, result: resultCreate, disabled: !isStrk20Network || isSubmitting },
     shield: { label: "You're shielding", value: "10", token: "STRK", hint: "Deposit into the privacy pool", cta: "Shield", onRun: handleShield, result: resultShield, disabled: !isStrk20Network || isSubmitting },
     send: { label: "You're sending - to self", value: "1", token: "STRK", hint: "Private in-pool transfer", cta: "Self transfer", onRun: handleSelfTransfer, result: resultTransfer, disabled: !isStrk20Network || isSubmitting },
     unshield: { label: "You're unshielding", value: "1", token: "STRK", hint: "Withdraw to your account", cta: "Unshield", onRun: handleUnshield, result: resultUnshield, disabled: !isStrk20Network || isSubmitting },
@@ -699,6 +785,41 @@ export default function WalletAccountV6Tag() {
 
       {/* Inline result */}
       {active.result ? <ResultCard r={active.result} /> : null}
+
+      <PaymentBCreateExecutionPanel
+        conditionalPay={CONDITIONAL_PAY_ADDRESS}
+        configuration={PAYMENT_B_TX3_CONFIGURATION}
+        token={TOKEN}
+        networkName={networkName}
+        isConnected={isConnected}
+        isMainnet={isMainnet}
+        isSubmitting={isSubmitting}
+        provider={constants.myFrontendProviders[myFrontendProviderIndex]}
+        executeActions={executePreparedPaymentBCreate}
+      />
+      {resultCreateB ? <ResultCard r={resultCreateB} /> : null}
+
+      <PaymentBRefundExecutionPanel
+        conditionalPay={CONDITIONAL_PAY_ADDRESS}
+        connectedAddress={connectedAddress}
+        networkName={networkName}
+        isConnected={isConnected}
+        isMainnet={isMainnet}
+        isSubmitting={isSubmitting}
+        provider={constants.myFrontendProviders[myFrontendProviderIndex]}
+        executeActions={executePreparedPaymentBRefund}
+      />
+      {resultRefund ? <ResultCard r={resultRefund} /> : null}
+
+      <PaymentAClaimExecutionPanel
+        conditionalPay={CONDITIONAL_PAY_ADDRESS}
+        connectedAddress={connectedAddress}
+        isConnected={isConnected}
+        isSubmitting={isSubmitting}
+        provider={constants.myFrontendProviders[myFrontendProviderIndex]}
+        executeActions={executePreparedPaymentAClaim}
+      />
+      {resultClaim ? <ResultCard r={resultClaim} /> : null}
     </div>
   );
 }
