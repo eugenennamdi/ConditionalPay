@@ -21,7 +21,6 @@ dist/
 .DS_Store
 *.pem
 .yalc
-yarn.lock
 
 # debug
 npm-debug.log*
@@ -33,6 +32,13 @@ yarn-error.log*
 .env*.local
 .env
 
+# local credentials and recovery artifacts
+*.passphrase
+payment-*.encrypted.json
+*recovery*/
+*keystore*.json
+*private-key*
+
 # vercel
 .vercel
 
@@ -40,7 +46,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /scripts-ts-node/
-package-lock.json
 A1priv/A1priv.ts
 /A1priv/
 

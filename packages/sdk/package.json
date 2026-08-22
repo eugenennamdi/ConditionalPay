@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "description": "TypeScript SDK for ConditionalPay privacy-preserving conditional payments on Starknet with STRK20",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eugenennamdi/ConditionalPay.git",
+    "directory": "packages/sdk"
+  },
   "main": "./dist/src/index.js",
   "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
