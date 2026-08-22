@@ -1,12 +1,13 @@
-// Real token logos, served from /public/tokens. Plain <img> (no next/image config).
+import Image from "next/image";
+
+// Real token logos, served from /public/tokens.
 
 type IconProps = { size?: number; className?: string };
 
 function coin(src: string, alt: string) {
   return function Coin({ size = 32, className }: IconProps) {
-    // eslint-disable-next-line @next/next/no-img-element
     return (
-      <img
+      <Image
         src={src}
         alt={alt}
         width={size}

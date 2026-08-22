@@ -19,12 +19,18 @@ function normalizeId(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+let discoveryStore: Store | undefined;
+
+function getDiscoveryStore(): Store {
+  discoveryStore ??= createStore({ eip1193Adapters: [] });
+  return discoveryStore;
+}
+
 export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" | "ctaBig" }) {
 
   const setMyWallet = useStoreWallet(state => state.setMyStarknetWalletObject);
 
   const setMyWalletAccount = useStoreWallet(state => state.setMyWalletAccount);
-  const myFrontendProviderIndex = useFrontendProvider(state => state.currentFrontendProviderIndex);
   const { setCurrentFrontendProviderIndex } = useFrontendProvider(state => state);
 
   const isConnected = useStoreWallet(state => state.isConnected);
@@ -40,17 +46,18 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
   const [error, setError] = useState<string>("");
   const [pickerOpen, setPickerOpen] = useState(false);
   // Detected Starknet wallets, in render state so the picker updates as wallets register.
-  const [wallets, setWallets] = useState<WalletWithStarknetFeatures[]>([]);
+  const [store] = useState(getDiscoveryStore);
+  const [wallets, setWallets] = useState<WalletWithStarknetFeatures[]>(
+    store.getWallets,
+  );
 
   // Create the discovery store once on mount so wallets have time to register
   // before the user opens the picker. eip1193Adapters:[] keeps MetaMask out entirely
   // (no EIP-6963 MetaMask bridging / Snap probing).
   useEffect(() => {
-    const store: Store = createStore({ eip1193Adapters: [] });
-    setWallets(store.getWallets().slice());
     const unsub = store.subscribe((next) => setWallets(next.slice()));
     return () => unsub();
-  }, []);
+  }, [store]);
 
   // Show every detected wallet except MetaMask (its Snap probing spams an unlock popup)
   // and Braavos (excluded from this starter's picker).
@@ -76,7 +83,7 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
     const myWA = await WalletAccountV6.connect(myFrontendProviders[2], selectedWallet);
     setMyWalletAccount(myWA);
     const result = await walletV6.requestAccounts(selectedWallet);
-    if (typeof (result) == "string") {
+    if (typeof result === "string") {
       console.log("This Wallet is not compatible.");
       return;
     }
@@ -84,7 +91,8 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
       const addr = validateAndParseAddress(result[0]);
       setAddressAccount(addr); // zustand
     }
-    const isConnectedWallet: boolean = await walletV6.getPermissions(selectedWallet).then((res: any) => (res as WALLET_API.Permission[]).includes(WALLET_API.Permission.ACCOUNTS));
+    const permissions = await walletV6.getPermissions(selectedWallet);
+    const isConnectedWallet = permissions.includes(WALLET_API.Permission.ACCOUNTS);
     setConnected(isConnectedWallet); // zustand
     if (isConnectedWallet) {
       const chainId = (await walletV6.requestChainId(selectedWallet)) as string;
@@ -113,9 +121,8 @@ export default function SelectWallet({ variant = "ctaBig" }: { variant?: "nav" |
     try {
       await handleSelectedWallet(w);
       setPickerOpen(false);
-    } catch (err: any) {
-      console.log("Wallet connection failed.\n", err);
-      setError(err?.message ?? "Wallet connection failed.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Wallet connection failed.");
     } finally {
       setConnecting(false);
     }

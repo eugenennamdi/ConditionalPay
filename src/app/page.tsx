@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from 'react';
 import styles from './uni.module.css';
-import SelectWallet from './components/client/WalletHandle/SelectWallet';
 import WalletAccountV6Tag from './components/client/WalletHandle/WalletAccountV6Tag';
 import { StrkCoin, BtcCoin, EthCoin, UsdcCoin, ZecCoin } from './components/TokenIcons';
 
@@ -52,18 +51,18 @@ export default function Page() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/tokens/strk20.png" alt="STRK20" className={styles.brandImg} />
         </div>
-        <SelectWallet variant="nav" />
+        <span className={styles.evidenceBadge}>MAINNET EVIDENCE</span>
       </nav>
 
       <header className={styles.hero}>
         <h1 className={styles.heroTitle}>
-          Just Encrypt
+          Conditional
           <br />
-          <span className={styles.heroAccent}>Everything</span>
+          <span className={styles.heroAccent}>Settlement</span>
         </h1>
         <p className={styles.heroSub}>
-          Shield, unshield, privately transfer and build your own private apps
-          on Starknet.
+          Programmable CREATE, CLAIM, and REFUND conditions for assets settled
+          through STRK20 on Starknet.
         </p>
       </header>
 
@@ -72,11 +71,11 @@ export default function Page() {
       </main>
 
       <footer className={styles.footer}>
-        <a href="https://github.com/PhilippeR26/Starknet-WalletAccount" target="_blank" rel="noreferrer">
+        <a href="https://github.com/eugenennamdi/ConditionalPay" target="_blank" rel="noreferrer">
           Repo
         </a>
         <span className={styles.footerDot}>·</span>
-        <span>Powered by Starknet.js v10.7.0</span>
+        <span>ConditionalPay · Starknet Mainnet</span>
       </footer>
     </div>
   );

@@ -66,6 +66,12 @@
   width: auto;
   display: block;
 }
+.evidenceBadge {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
 
 /* --- Hero ---------------------------------------------------------------- */
 .hero {
