@@ -1,20 +1,21 @@
 # STRK20 Privacy Integration Plan — ConditionalPay
 
-Generated 2026-08-17 by the strk20-privacy-integration skill. Revised 2026-08-17 (r4).
-Statuses below were current at generation time — re-verify "coming soon" items before building against them.
+Generated 2026-08-17 by the strk20-privacy-integration skill. Revised 2026-08-22 after the verified Mainnet lifecycle.
+
+> **Document status:** implementation and design record. The frozen ConditionalPay contract, SDK builders, and small-value Mainnet CREATE / CLAIM / CREATE / REFUND lifecycle are complete. The public submission UI is intentionally read-only; a generalized product UX remains future work. Re-verify upstream "coming soon" items before building new capabilities against them.
 
 ---
 
 ## 1. Project snapshot
 
-- **Stack**: Next.js 16, React 19, TypeScript, starknet.js 10.4.0, get-starknet 6.0.2 (needs bump), types-js 0.10.3, zustand 5.x, no backend
-- **Cairo**: Scarb (edition 2024_07), starknet dep 2.18.0, no snfoundry.toml — echo helper only (`cairo/src/lib.cairo`)
+- **Stack**: Next.js 16.3.1, React 19.2.1, TypeScript 5.9, starknet.js 10.7.0, get-starknet 6.0.4, types-js 0.10.4-beta.2, zustand 5.x, no backend
+- **Cairo**: frozen ConditionalPay contract in `cairo/src/lib.cairo`, Scarb edition 2024_07, Starknet dependency 2.18.0
 - **Relevant code**:
   - Wallet connection: `src/app/components/client/WalletHandle/SelectWallet.tsx:64` (`handleSelectedWallet` → `WalletAccountV6.connect`)
-  - Transaction layer: `src/app/components/client/WalletHandle/WalletAccountV6Tag.tsx:194` (`submit` → `strk20InvokeTransaction`)
+  - Historical transaction layer: preserved on branch `evidence/mainnet-lifecycle` and tag `mainnet-lifecycle-v1`
   - State: `src/app/components/Wallet/walletContext.ts` (zustand store, holds `WalletAccountV6`)
-  - Config: `src/utils/constants.ts` (DEMO token, echo helper addresses, providers)
-  - Cairo: `cairo/src/lib.cairo` (echo `privacy_invoke` — round-trip demo)
+  - Config: `src/utils/constants.ts` (canonical Mainnet deployment addresses and frontend providers)
+  - Cairo: `cairo/src/lib.cairo` (ConditionalPay `privacy_invoke` state machine)
 - **Privacy goal** (from interview): Settle claimed/refunded ConditionalPay outputs directly back into STRK20 shielded notes, so the recipient's subsequent private activity is unlinked from the settlement event. The helper invocation, token, amount, timing, and configured onchain conditions are **not hidden**. The shielded initiator behind a privacy transaction remains unlinkable.
 - **Environment**: Mainnet from day one. Sepolia is optional for dev convenience, not the primary integration target. Wallet scope: Ready extension (current), Xverse (in progress).
 
@@ -59,12 +60,12 @@ Reference: https://strk20-by-example.org/helpers/privacy-invoke
 
 ## 4. Prerequisites & versions
 
-- `starknet@10.4.0` — already installed ✓
-- `@starknet-io/get-starknet-discovery@6.0.3`, `@starknet-io/get-starknet-wallet-standard@6.0.3` — **upgrade from 6.0.2** (npm `next` tag; `6.0.4` is now on `next`, but the skill pins 6.0.3; verify 6.0.4 compatibility before adopting)
-- `@starknet-io/types-js@0.10.3` — already installed ✓
+- `starknet@10.7.0` — Mainnet lifecycle validated
+- `@starknet-io/get-starknet-discovery@6.0.4`, `@starknet-io/get-starknet-wallet-standard@6.0.4` — Mainnet wallet discovery validated
+- `@starknet-io/types-js@0.10.4-beta.2` — matches the validated Wallet API action types
 - Test wallet: **Ready extension** (current privacy-enabled wallet)
-- Cairo toolchain: Scarb (edition 2024_07), starknet 2.18.0 — add **Starknet Foundry** (`snfoundry.toml`, snforge) for contract tests
-- `sncast` for declare/deploy
+- Cairo toolchain: Scarb (edition 2024_07), Starknet 2.18.0, Cairo test suite executed with `scarb --profile release test`
+- `sncast` used for the completed declaration and Mainnet deployment
 
 ---
 
@@ -80,9 +81,11 @@ Reference: https://strk20-by-example.org/helpers/privacy-invoke
 4. The wallet handles registration, keys, proving, and pool interaction. The dapp never touches viewing keys.
 5. The contract and SDK are **token-generic** — any ERC-20 token address accepted. The MVP frontend exposes only STRK initially.
 
-The reference anonymizer to study: `packages/ekubo_swap_anonymizer` and `packages/vesu_lending_anonymizer` in the [Privacy SDK monorepo](https://github.com/starkware-libs/starknet-privacy). The echo helper in `cairo/src/lib.cairo` is a minimal `privacy_invoke` skeleton — ConditionalPay's contract replaces it with condition logic, state, and a custom ABI.
+The original design used `packages/ekubo_swap_anonymizer` and `packages/vesu_lending_anonymizer` in the [Privacy SDK monorepo](https://github.com/starkware-libs/starknet-privacy) as references. The starter echo helper was replaced by the frozen ConditionalPay contract, which adds condition logic, state, liability accounting, and its custom ABI.
 
-### 5.2. Existing starter-kit files we retain
+### 5.2. Original starter-kit inventory (historical)
+
+This table records the implementation starting point. The submission tree now uses `WalletAccountV6Tag.tsx` as a read-only evidence surface; wallet state and connection modules remain reusable but are not imported by that public surface.
 
 | File | Retain? | Notes |
 |---|---|---|
@@ -95,21 +98,23 @@ The reference anonymizer to study: `packages/ekubo_swap_anonymizer` and `package
 | `src/app/components/TokenIcons.tsx` | ✅ Keep | Token icons — reuse |
 | `package.json` | ✅ Keep | Bump get-starknet versions, update name/description |
 | `tsconfig.json`, `next.config.js`, `.editorconfig`, `.gitignore` | ✅ Keep | Config — no changes needed |
-| `.env.example`, `.env.local` | ✅ Keep | Update env vars for ConditionalPay contract addresses |
+| `.env.example`, `.env.local` | ✅ Keep locally | Public RPC configuration only; `.env.local` remains ignored and must contain no wallet or recovery secrets |
 
-### 5.3. Starter-kit demo code to eventually remove
+### 5.3. Starter-kit demo removals (completed)
 
 | File / code | What it is | When to remove |
 |---|---|---|
-| `src/app/components/client/WalletHandle/WalletAccountV6Tag.tsx` | Entire file — demo action tabs (shield/send/unshield/echo/balances) with hardcoded amounts | Replace with ConditionalPay UI in Phase 3 |
-| `src/utils/constants.ts` — echo helper constants (`Strk20EchoHelperAddress`, `Strk20EchoHelperSepolia`, `Strk20EchoHelperClassHash`, `echoHelperForIndex`) | Demo echo helper addresses and class hash | Remove once ConditionalPay contract replaces the echo helper |
-| `cairo/src/lib.cairo` | Echo helper contract (no-op round-trip) | Replace with ConditionalPay contract |
-| `cairo/address.md` | Echo helper deployment addresses | Replace with ConditionalPay deployment info |
-| `src/app/page.tsx` — hero copy ("Just Encrypt Everything"), footer repo link | Starter-kit branding | Update in Phase 3 |
+| `src/app/components/client/WalletHandle/WalletAccountV6Tag.tsx` | Demo action tabs and hardcoded starter amounts | Replaced by the read-only ConditionalPay Mainnet evidence surface |
+| `src/utils/constants.ts` — echo helper constants | Demo helper addresses and class hash | Removed; canonical ConditionalPay deployment constants retained |
+| `cairo/src/lib.cairo` | Original echo helper contract | Replaced by the now-frozen ConditionalPay contract |
+| `cairo/address.md` | Echo helper deployment addresses | Replaced with verified ConditionalPay Mainnet deployment information |
+| `src/app/page.tsx` — starter hero/footer | Starter-kit branding | Replaced with ConditionalPay submission branding |
 | `public/next.svg`, `public/vercel.svg` | Starter template assets | Remove when no longer needed |
 | DEMO constants in `WalletAccountV6Tag.tsx` (`TEN_STRK`, `FIVE_STRK`, `ONE_STRK`) | Hardcoded demo amounts | Replaced by user-input amounts |
 
-### 5.4. New app files/modules we will require
+### 5.4. Original target structure (design record)
+
+The SDK, contract, vectors, security documentation, and submission metadata below were implemented. The generalized CREATE/CLAIM/APPROVE/REFUND product components remain future work; the production submission tree intentionally exposes only read-only evidence.
 
 ```
 packages/
@@ -451,19 +456,16 @@ Refunder (wallet) ──► WalletAccountV6.strk20InvokeTransaction([
 
 ---
 
-## 10. Mainnet blockers & wallet assumptions
+## 10. Mainnet validation results & wallet assumptions
 
-### Blockers
+### Resolved validation items
 
-1. **get-starknet pin**: currently 6.0.2, needs bump to 6.0.3 (6.0.4 now on `next` — verify before pinning)
-2. **No Starknet Foundry setup**: need `snfoundry.toml` and snforge for contract tests before mainnet deploy
-3. **Security readiness** (team-owned, not a hard sprint blocker):
-   - Comprehensive snforge test suite covering all invariants from §8
-   - Simulation / dry-run of all flows on mainnet before real-value use
-   - Small-value mainnet deployment and end-to-end test before production use
-   - External security review is desirable but not a hard sprint blocker
-4. **Pool fees**: currently ~4 STRK per private operation (read from `get_fee_amount`). ConditionalPay flows involve multiple pool operations (CREATE, then CLAIM or REFUND) — fee economics must be validated
-5. **Note maturity**: freshly shielded funds take ~10 blocks to mature. A CREATE immediately after a shield may fail — UX must surface the wait or compose the operations
+1. **Dependency alignment**: starknet.js 10.7.0, get-starknet 6.0.4, and types-js 0.10.4-beta.2 completed the verified lifecycle without Wallet API serialization casts.
+2. **Contract tests**: the Cairo suite covers state transitions, liability accounting, allowance behavior, pool-only access, and tested reentrancy paths.
+3. **Mainnet execution**: small-value CREATE → CLAIM and CREATE → REFUND completed successfully; final STRK liability is zero.
+4. **Pool fees**: the evidence lifecycle observed a 6 STRK pool fee. This value is live protocol state and must be re-read before any future operation.
+5. **Note maturity**: the evidence flow waited at least 10 blocks before spending newly created private notes.
+6. **External review**: no formal third-party security audit has been completed.
 
 ### Wallet assumptions
 
@@ -501,15 +503,15 @@ Refunder (wallet) ──► WalletAccountV6.strk20InvokeTransaction([
 6. **Event emission**: verify `PaymentCreated`, `PaymentClaimed`, `PaymentRefunded`, `PaymentApproved` events emit correctly with correct indexed keys
 7. **Cross-language test vectors**: a fixed set of test vectors (hardcoded preimages, tokens, amounts, nonces) that both the Cairo contract tests and the TypeScript SDK tests compute against. The vectors prove the domain-separated Poseidon outputs (hashlock, refund_hash, payment_id) are identical across Cairo and TypeScript. Vectors live in `test_vectors.json` shared between `cairo/tests/` and `packages/sdk/`. See §12.1 for the vector format.
 
-### Integration tests (mainnet — primary target)
+### Integration tests (Mainnet — original target and completion record)
 
-1. **Phase 0 connectivity**: three confirmed mainnet STRK20 transactions with preserved hashes
-2. **Small-value mainnet deployment**: deploy ConditionalPay with low-value test parameters
-3. Full CREATE → CLAIM flow on mainnet with Ready wallet
-4. Full CREATE → REFUND flow (with short `expires_at` in the past)
-5. CREATE → APPROVE → CLAIM flow (approval gate)
-6. Verify open notes are credited correctly (check shielded balances after claim/refund)
-7. Verify against the wallet test dapp: https://starknet-wallet-account.vercel.app/
+1. **Phase 0 connectivity**: completed before ConditionalPay integration; hashes preserved in the project record.
+2. **Small-value Mainnet deployment**: completed at the canonical address documented in `MAINNET_EVIDENCE.md`.
+3. Full CREATE → CLAIM: completed by TX1/TX2.
+4. Full CREATE → REFUND: completed by TX3/TX4.
+5. CREATE → APPROVE → CLAIM: covered locally; no approval-gated transaction is claimed in the four-transaction Mainnet evidence set.
+6. OPEN-note settlement and shielded-balance effects were checked during the evidence flow; viewing data remains wallet-controlled and is not committed.
+7. The Wallet API path was validated using the privacy-enabled wallet against Mainnet.
 
 ### Sepolia (optional, secondary)
 
@@ -638,17 +640,13 @@ At minimum three vectors: (1) basic payment with all fields, (2) zero approver /
 
 The creator's identity is deliberately unlinkable from the on-chain payment. This means a user-specific `PaymentList` **cannot** be reconstructed by querying creator-address events — there is no creator address on-chain.
 
-### MVP approach
+### Implemented credential and discovery model
 
-1. **Creator side — non-secret metadata**: after a successful CREATE transaction, the frontend persists non-secret payment metadata to **`localStorage`** keyed by the connected wallet address: `{ paymentId, token, amount, claimAfter, expiresAt, nonce, txHash }`. The `PaymentList` component reads from this local store. **Raw `claimPreimage` and `refundPreimage` MUST NOT be stored in plain `localStorage`.**
+1. **Non-secret metadata**: a future generalized product UI may persist public payment metadata such as `{ paymentId, token, amount, claimAfter, expiresAt, nonce, txHash }`. Raw credentials and passphrases must never be stored in `localStorage` or `sessionStorage`.
 
-2. **Creator side — secret recovery**: the MVP uses an explicit **copy / export** model for bearer secrets:
-   - Immediately after CREATE, the UI presents the `claimPreimage` and `refundPreimage` for the user to **copy and save** (e.g. in a password manager, encrypted notes, or a downloaded file).
-   - The UI prompts a "Copy claim credential" and "Copy refund secret" action and does not dismiss the creation dialog until the user has acknowledged they saved both.
-   - Secrets are cleared from in-memory state after the user navigates away. They are not persisted in the browser.
-   - **Future upgrade path**: encrypted client-side storage (e.g. WebCrypto `AES-GCM` keyed to a wallet-signed challenge) can be added later without changing the data model.
+2. **Encrypted recovery envelopes**: the implemented SDK exports claim/refund credential bundles using AES-256-GCM with PBKDF2-HMAC-SHA256 key derivation, a random salt, and a random IV. The user controls the passphrase, which must be stored separately and never written to the repository, environment files, logs, browser storage, or beside the envelope.
 
-3. **Claimant side — URL fragment**: the creator shares a **claim credential** with the claimant out-of-band. The credential is formatted as a URL with a **fragment** (not query parameters): `/claim#id=...&secret=...`. Fragments are **not sent to the server** and are parsed client-side only. The frontend reads the fragment on load, populates the claim form, and **removes the fragment from the visible URL** (via `history.replaceState`) to minimize accidental exposure in screenshots or browser history.
+3. **Credential handoff**: do not transport plaintext credentials in URL query strings or automatically populate them from URLs. Use an explicit encrypted envelope through a user-controlled secure channel, decrypt only for the immediate action, and release in-memory references best-effort afterward. JavaScript does not guarantee cryptographic zeroization of immutable strings.
 
 4. **On-chain lookup**: given a `paymentId`, anyone can call `getPayment()` to read the payment's current state (ACTIVE/CLAIMED/REFUNDED), token, amount, timing config, and approval status. This allows the frontend to display payment status for known payment IDs.
 
@@ -663,7 +661,7 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 
 ## 14. Phased implementation order
 
-### Phase 0 — STRK20 Mainnet connectivity proof
+### Phase 0 — STRK20 Mainnet connectivity proof ✅ complete 2026-08-17
 
 **Goal**: prove the existing starter kit works end-to-end on Starknet Mainnet with the Ready wallet before writing any ConditionalPay product code. This validates the toolchain, wallet, pool, and RPC connectivity.
 
@@ -690,7 +688,7 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 }
 ```
 
-### Phase 1 — Contract foundation (CREATE + APPROVE)
+### Phase 1 — Contract foundation (CREATE + APPROVE) ✅ complete 2026-08-20
 
 1. Add Starknet Foundry config (`snfoundry.toml`)
 2. Replace `cairo/src/lib.cairo` with ConditionalPay contract:
@@ -708,7 +706,7 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 7. Update `src/utils/constants.ts` — add ConditionalPay contract address placeholder, keep existing provider/network config
 8. Verify: `scarb build` passes, snforge tests pass, SDK tests pass, frontend builds with `npm run build`
 
-### Phase 2 — Full contract (CLAIM + REFUND)
+### Phase 2 — Full contract (CLAIM + REFUND) ✅ complete 2026-08-20
 
 1. Implement CLAIM logic (domain-separated hashlock verification, timing window, approval gate, pool settlement, decrease `locked_by_token`, return `OpenNoteDeposit`)
 2. Implement REFUND logic (domain-separated refund_hash verification, expiry, pool settlement, decrease `locked_by_token`, return `OpenNoteDeposit`)
@@ -717,31 +715,23 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 5. Add SDK `README.md` documentation
 6. Verify: full snforge test suite passes — every invariant covered; SDK tests pass against `test_vectors.json`
 
-### Phase 3 — Frontend + mainnet integration
+### Phase 3 — Frontend + Mainnet integration ✅ evidence lifecycle complete 2026-08-22
 
-1. Replace `WalletAccountV6Tag.tsx` with ConditionalPay UI components (`CreatePayment`, `ClaimPayment`, `ApprovePayment`, `RefundPayment`, `PaymentCard`, `PaymentList`)
-2. `PaymentList` reads non-secret metadata from `localStorage` (§13). Raw secrets are NOT stored in `localStorage`.
-3. `CreatePayment` presents "Copy claim credential" and "Copy refund secret" after successful CREATE — modal does not dismiss until user acknowledges (§13 item 2)
-4. `ClaimPayment` accepts claim credential via **URL fragment** (`/claim#id=...&secret=...`) — parsed client-side, fragment removed from visible URL via `history.replaceState` (§13 item 3). Manual entry also supported.
-5. Frontend restricts token selection to STRK (SDK remains token-generic)
-6. Update `page.tsx` with ConditionalPay branding and layout
-7. Update `layout.tsx` metadata
-8. Remove remaining demo code (echo constants, echo helper references)
-9. Declare + deploy contract to mainnet via sncast (constructor: mainnet pool address)
-10. Small-value mainnet end-to-end: CREATE → CLAIM, CREATE → REFUND, CREATE → APPROVE → CLAIM with Ready extension
-11. Populate `strk20.json` with ≥3 ConditionalPay mainnet tx hashes (hackathon submission format: `{"transactions": [...]}`)
-12. Graceful degradation: detect wallets without privacy support, hide ConditionalPay actions
-13. Fee UX: read pool fee from `get_fee_amount`, surface in UI, subtract from MAX amounts
-14. Note maturity UX: surface the ~10-block wait after shielding
+1. Canonical SDK builders produced CREATE `[withdraw, invoke]` and CLAIM/REFUND `[transfer OPEN, invoke]` action batches.
+2. Credentials were generated with CSPRNG entropy and stored only in password-encrypted recovery envelopes outside the repository.
+3. The contract was declared and deployed to Mainnet with the canonical pool constructor argument.
+4. Small-value Mainnet CREATE → CLAIM and CREATE → REFUND paths completed successfully with authenticated lifecycle events and final zero liability.
+5. The exact localhost execution harness was preserved on branch `evidence/mainnet-lifecycle` at tag `mainnet-lifecycle-v1`.
+6. The public submission UI was frozen as read-only after lifecycle completion. Generalized CREATE/CLAIM/REFUND product UX, fee UX, and payment discovery remain future work.
 
-### Phase 4 — Hardening
+### Phase 4 — Submission hardening ✅ P0 complete 2026-08-22
 
-1. Write `SECURITY.md` documenting the bearer-credential threat model (see §16)
+1. Ship `SECURITY.md` documenting the bearer-credential threat model (see §16)
 2. Team-owned security review of contract code
 3. Simulation / dry-run of adversarial scenarios (double-claim, expired-then-claim race, unauthorized approve, refund with wrong preimage, solvency drain attempt)
-4. Larger-value mainnet tests
-5. External security review (desirable, not a hard sprint blocker)
-5. Production deployment with documented contract addresses
+4. Preserve the verified small-value Mainnet evidence; no additional Mainnet write is required for submission hardening
+5. External security review (desirable and not yet completed)
+6. Publish deployment, evidence, security, reproducibility, and submission metadata
 
 ---
 
@@ -749,7 +739,7 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 
 1. **Multi-token frontend** — the contract and SDK are token-generic, but the MVP frontend exposes only STRK. Multi-token UI is a future extension.
 2. **Batch/multi-payment creation** — one payment per transaction in the MVP.
-3. **Server-side payment indexing** — the MVP uses `localStorage` for creator payment persistence. Cross-device sync or server-side index is future work.
+3. **Payment indexing** — the submission UI does not persist creator payment records. Any future browser index may contain public metadata only; plaintext credentials and passphrases must never enter `localStorage` or `sessionStorage`. Cross-device encrypted indexing is future work.
 4. **Private sub-accounts** — the Wallet API route for sub-accounts is still pending. Tracked for future.
 5. **Custom condition primitives beyond hashlock/timelock/approval** — the MVP supports exactly these three. Extensible condition framework is a future design.
 6. **Mobile wallet support** — Ready extension only (browser).
@@ -771,27 +761,25 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 - **The team owns** review, deployment, and maintenance of the ConditionalPay contract. This skill never generates the contract — it provides design guidance.
 - **Security approach**: comprehensive snforge tests (all invariants from §8), simulation/dry-run, small-value mainnet deployment, team-owned security review. External review is desirable but not a hard sprint blocker.
 - **Never attribute activity to a transaction sender.** Private transactions are relayed, so the sender is the relayer. Any feature that counts per-user activity reads the pool's `Deposit` event and filters on its **first indexed key (topic1)**.
-- **Bearer credentials**: the `claim_preimage` and `refund_preimage` are sensitive secrets. The SDK and frontend must treat them as credentials — never log them, never include in analytics, clear from memory after use. Claim credentials must be shared via URL fragments (not query parameters) to avoid server-side logging.
-- **`SECURITY.md` requirement** (Phase 4): the repo must ship a `SECURITY.md` documenting the bearer-credential threat model. At minimum it must state:
+- **Bearer credentials**: the `claim_preimage` and `refund_preimage` are sensitive secrets. The SDK and frontend must treat them as credentials — never log them, never include them in analytics, and release in-memory references after use. The implemented model uses password-encrypted recovery envelopes and prohibits plaintext URL transport or browser persistence.
+- **`SECURITY.md`**: the repository ships a bearer-credential threat model covering at minimum:
   1. Anyone who obtains a valid, unused `claim_preimage` can exercise the claim during its valid time window. The hashlock is a bearer credential — there is no additional address-based authorization.
   2. Anyone who obtains a valid, unused `refund_preimage` can exercise the refund after expiry. The refund_hash is a bearer credential.
   3. If a bearer secret is leaked, the only mitigation is to exercise it before the attacker does (or, for claims, to wait for expiry and refund).
-  4. Secrets must not be stored in plain `localStorage`, URL query parameters, server-side logs, or analytics. The MVP uses explicit copy/export; encrypted client-side storage is a future upgrade.
+  4. Secrets must not be stored in plain `localStorage`, `sessionStorage`, URL parameters, server-side logs, or analytics. Encrypted recovery envelopes and their passphrases must be stored separately.
   5. The `approve` entrypoint is address-gated (not bearer) — only the configured approver can call it, and only while the payment is ACTIVE.
 
 ---
 
 ## 17. Open items to re-verify at build time
 
-- [ ] get-starknet `next` tag: 6.0.4 is now published — verify compatibility before pinning (skill pins 6.0.3)
 - [ ] `packages/sub_account_anonymizer` — no longer present in the monorepo (was cited by the skill). A new `packages/shadow_account_anonymizer` exists — check if relevant.
 - [ ] Xverse dapp-facing Wallet API status — re-check
-- [ ] Wallet API spec v0.10.4-rc.1 in flight — track
+- [ ] Wallet API specification changes after the validated types-js 0.10.4-beta.2 surface — track before future execution work
 - [ ] Pool fee amount — read from `get_fee_amount` at build time
 - [ ] Note maturity timing — confirm ~10 blocks on current mainnet
 - [ ] Fee/paymaster design — still being designed by STRK20 team
-- [ ] `starknet` npm `next` tag now at 10.7.0 — evaluate if later versions add anything useful (pinned 10.4.0 is sufficient)
-- [ ] Verify `privacy_invoke` calldata deserialization matches the enum Serde layout in the deployed pool version
+- [x] `privacy_invoke` calldata deserialization matched the deployed pool during the verified Mainnet lifecycle
 
 ---
 
@@ -804,7 +792,7 @@ The creator's identity is deliberately unlinkable from the on-chain payment. Thi
 | SDK quickstart | https://github.com/starkware-libs/starknet-privacy/blob/main/sdk/README.md |
 | WalletAccount guide | https://starknet-js.com/docs/next/guides/account/walletAccount/#with-get-starknet-v6 |
 | Wallet test dapp | https://starknet-wallet-account.vercel.app/ |
-| Wallet API spec v0.10.3 | https://github.com/starkware-libs/starknet-specs/releases/tag/v0.10.3 |
+| Wallet API specification releases | https://github.com/starkware-libs/starknet-specs/releases |
 | Whitepaper | https://eprint.iacr.org/2026/474 |
 | Anonymizer anatomy (privacy_invoke) | https://strk20-by-example.org/helpers/privacy-invoke |
 | Swap anonymizer example | https://strk20-by-example.org/helpers/swap-helper |

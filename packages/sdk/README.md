@@ -2,8 +2,8 @@
 
 TypeScript SDK foundation for ConditionalPay privacy-preserving conditional payments on Starknet with STRK20.
 
-> [!WARNING]
-> This SDK is currently in **Phase 2C (Query Layer & Event Parsing)** development. Transaction submission and wallet connection hooks are handled by the dapp application layer. This package is private and not published to npm.
+> [!NOTE]
+> This SDK powered the verified ConditionalPay Mainnet CREATE / CLAIM / CREATE / REFUND lifecycle. Transaction submission and wallet connection remain application-layer responsibilities. The package is private and is not published to npm.
 
 ---
 
@@ -13,7 +13,7 @@ TypeScript SDK foundation for ConditionalPay privacy-preserving conditional paym
 
 ---
 
-## Scope (Phase 2A, 2B & 2C)
+## Scope
 
 - **Domain Constants & Canonical Types**: Directly imports and re-exports canonical action types (`STRK20_ACTION`, `STRK20_WITHDRAW_ACTION`, `STRK20_TRANSFER_ACTION`, `STRK20_INVOKE_ACTION`, `STRK20_CALLDATA_ITEM`) from `starknet` and `@starknet-io/types-js`.
 - **Deterministic Numeric Inputs**: All numeric and felt inputs strictly require `BigIntish = bigint | string`. JavaScript `number` is rejected to prevent silent precision loss beyond `Number.MAX_SAFE_INTEGER`.
