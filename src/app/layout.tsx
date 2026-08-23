@@ -2,8 +2,6 @@ import type { Metadata } from 'next'
 import { Inter, Space_Mono } from 'next/font/google'
 import './globals.css'
 
-// Clean neutral grotesque for everything (matches the Uniswap reference); a mono
-// only for hex addresses / hashes.
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-body',
@@ -18,7 +16,8 @@ const spaceMono = Space_Mono({
 
 export const metadata: Metadata = {
   title: 'ConditionalPay · Programmable private settlement',
-  description: 'Programmable CREATE, CLAIM, and REFUND settlement for STRK20 assets on Starknet',
+  description:
+    'ConditionalPay adds verifiable settlement conditions to STRK20 without storing creator, claimant, or refunder addresses.',
 }
 
 export default function RootLayout({
