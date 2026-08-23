@@ -1,202 +1,252 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import styles from '../../uni.module.css';
 
 type Route = 'claim' | 'refund';
 
-const CONDITION_STATES = {
+interface ConditionItem {
+  name: string;
+  status: string;
+  verified: boolean;
+}
+
+const CONDITIONS_BY_ROUTE: Record<Route, ConditionItem[]> = {
   claim: [
-    ['Hashlock', 'Verified'],
-    ['Time', 'Window open'],
-    ['Approval', 'Not required'],
+    { name: 'Hashlock', status: 'Verified', verified: true },
+    { name: 'Time', status: 'Window open', verified: true },
+    { name: 'Approval', status: 'Not required', verified: false },
   ],
   refund: [
-    ['Refund hash', 'Verified'],
-    ['Expiry', 'Reached'],
-    ['Approval', 'Not required'],
+    { name: 'Refund hash', status: 'Verified', verified: true },
+    { name: 'Expiry', status: 'Reached', verified: true },
+    { name: 'Approval', status: 'Not required', verified: false },
   ],
-} as const;
+};
 
 export default function SettlementInstrument() {
   const [route, setRoute] = useState<Route>('claim');
-  const [motionRequest, setMotionRequest] = useState({ id: 0, enabled: true });
-  const activeAnimationsRef = useRef<Animation[]>([]);
-  const inputRailRef = useRef<HTMLSpanElement>(null);
-  const inputMarkerRef = useRef<HTMLElement>(null);
-  const conditionRefs = useRef<(HTMLLIElement | null)[]>([]);
-  const claimTrackRef = useRef<HTMLSpanElement>(null);
-  const refundTrackRef = useRef<HTMLSpanElement>(null);
-  const claimProgressRef = useRef<HTMLSpanElement>(null);
-  const refundProgressRef = useRef<HTMLSpanElement>(null);
-  const claimMarkerRef = useRef<HTMLElement>(null);
-  const refundMarkerRef = useRef<HTMLElement>(null);
-  const claimOutputRef = useRef<HTMLDivElement>(null);
-  const refundOutputRef = useRef<HTMLDivElement>(null);
+  const [animating, setAnimating] = useState(false);
+  const conditionsRef = useRef<(HTMLLIElement | null)[]>([]);
+  const claimNoteRef = useRef<HTMLDivElement>(null);
+  const refundNoteRef = useRef<HTMLDivElement>(null);
+  const activeAnimRef = useRef<Animation[]>([]);
+  const animationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baseId = useId();
 
-  useEffect(() => {
-    activeAnimationsRef.current.forEach((animation) => animation.cancel());
-    activeAnimationsRef.current = [];
+  // Desktop marker refs
+  const dInputPipRef = useRef<SVGCircleElement>(null);
+  const dBranchPipRef = useRef<SVGCircleElement>(null);
+  // Mobile marker refs
+  const mInputPipRef = useRef<SVGCircleElement>(null);
+  const mBranchPipRef = useRef<SVGCircleElement>(null);
 
-    if (!motionRequest.enabled) return;
+  const cancelActiveAnimation = useCallback(() => {
+    activeAnimRef.current.forEach((anim) => anim.cancel());
+    activeAnimRef.current = [];
 
-    const inputRail = inputRailRef.current;
-    const inputMarker = inputMarkerRef.current;
-    const track = route === 'claim' ? claimTrackRef.current : refundTrackRef.current;
-    const progress = route === 'claim' ? claimProgressRef.current : refundProgressRef.current;
-    const marker = route === 'claim' ? claimMarkerRef.current : refundMarkerRef.current;
-    const output = route === 'claim' ? claimOutputRef.current : refundOutputRef.current;
-    const conditions = conditionRefs.current.filter((condition) => condition !== null);
+    if (animationTimerRef.current !== null) {
+      clearTimeout(animationTimerRef.current);
+      animationTimerRef.current = null;
+    }
+  }, []);
 
-    if (!inputRail || !inputMarker || !track || !progress || !marker || !output) return;
+  const runAnimation = useCallback((targetRoute: Route) => {
+    cancelActiveAnimation();
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const animations: Animation[] = [];
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (reducedMotion) {
-      animations.push(
-        output.animate([{ opacity: 0.72 }, { opacity: 1 }], {
-          duration: 180,
-          easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
-        }),
-      );
-      activeAnimationsRef.current = animations;
-      return () => animations.forEach((animation) => animation.cancel());
+      setAnimating(false);
+      return;
     }
 
-    const getTravel = (rail: HTMLElement, valueMarker: HTMLElement) => {
-      const railRect = rail.getBoundingClientRect();
-      const markerRect = valueMarker.getBoundingClientRect();
-      const vertical = railRect.height > railRect.width;
-      const distance = vertical
-        ? Math.max(0, railRect.height - markerRect.height)
-        : Math.max(0, railRect.width - markerRect.width);
+    setAnimating(true);
+    const anims: Animation[] = [];
 
-      return {
-        destination: vertical
-          ? `translate3d(0, ${distance}px, 0)`
-          : `translate3d(${distance}px, 0, 0)`,
-        vertical,
-      };
-    };
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 740;
+    const inputPip = isMobile ? mInputPipRef.current : dInputPipRef.current;
+    const branchPip = isMobile ? mBranchPipRef.current : dBranchPipRef.current;
+    const activeNote = targetRoute === 'claim' ? claimNoteRef.current : refundNoteRef.current;
+    const conditionItems = conditionsRef.current.filter(Boolean);
 
-    const inputTravel = getTravel(inputRail, inputMarker);
-    const branchTravel = getTravel(track, marker);
-
-    animations.push(
-      inputMarker.animate(
+    // 1. Input rail value marker (0ms -> 300ms)
+    if (inputPip) {
+      const inputAnim = inputPip.animate(
         [
-          { opacity: 0, transform: 'translate3d(0, 0, 0)' },
-          { opacity: 1, transform: 'translate3d(0, 0, 0)', offset: 0.12 },
-          { opacity: 1, transform: inputTravel.destination, offset: 0.82 },
-          { opacity: 0, transform: inputTravel.destination },
+          { offsetDistance: '0%', opacity: 0 },
+          { offsetDistance: '10%', opacity: 1, offset: 0.1 },
+          { offsetDistance: '90%', opacity: 1, offset: 0.9 },
+          { offsetDistance: '100%', opacity: 0 },
         ],
         {
-          duration: 500,
-          easing: 'cubic-bezier(0.77, 0, 0.175, 1)',
-        },
-      ),
-    );
+          duration: 300,
+          easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
+          fill: 'forwards',
+        }
+      );
+      anims.push(inputAnim);
+    }
 
-    conditions.forEach((condition, index) => {
-      animations.push(
-        condition.animate(
+    // 2. Condition checks resolve in cascade (240ms -> 460ms)
+    conditionItems.forEach((item, idx) => {
+      if (item) {
+        const condAnim = item.animate(
           [
-            { opacity: 0.48, transform: 'translate3d(0, 0, 0)' },
-            { opacity: 1, transform: 'translate3d(3px, 0, 0)', offset: 0.56 },
-            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+            { opacity: 0.4, transform: 'translateX(-2px)' },
+            { opacity: 1, transform: 'translateX(0)' },
           ],
           {
-            delay: 390 + index * 110,
-            duration: 220,
+            delay: 240 + idx * 60,
+            duration: 180,
             easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
             fill: 'both',
-          },
-        ),
-      );
+          }
+        );
+        anims.push(condAnim);
+      }
     });
 
-    animations.push(
-      progress.animate(
+    // 3. Branch path marker travels along selected branch (440ms -> 800ms)
+    if (branchPip) {
+      const desktopBranchPath =
+        targetRoute === 'claim'
+          ? 'M 0 100 L 24 100 C 50 100, 52 26, 76 26 L 100 26'
+          : 'M 0 100 L 24 100 C 50 100, 52 174, 76 174 L 100 174';
+      const mobileBranchPath =
+        targetRoute === 'claim'
+          ? 'M 50 0 L 50 14 C 50 30, 25 30, 25 44'
+          : 'M 50 0 L 50 14 C 50 30, 75 30, 75 44';
+
+      branchPip.style.offsetPath = `path("${isMobile ? mobileBranchPath : desktopBranchPath}")`;
+
+      const branchAnim = branchPip.animate(
         [
-          {
-            opacity: 0.35,
-            transform: branchTravel.vertical ? 'scaleY(0)' : 'scaleX(0)',
-          },
-          {
-            opacity: 1,
-            transform: branchTravel.vertical ? 'scaleY(1)' : 'scaleX(1)',
-          },
+          { offsetDistance: '0%', opacity: 0 },
+          { offsetDistance: '8%', opacity: 1, offset: 0.08 },
+          { offsetDistance: '92%', opacity: 1, offset: 0.92 },
+          { offsetDistance: '100%', opacity: 0 },
         ],
         {
-          delay: 740,
-          duration: 420,
-          easing: 'cubic-bezier(0.77, 0, 0.175, 1)',
-          fill: 'both',
-        },
-      ),
-      marker.animate(
+          delay: 440,
+          duration: 360,
+          easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
+          fill: 'forwards',
+        }
+      );
+      anims.push(branchAnim);
+    }
+
+    // 4. Output note settles in terminal state (760ms -> 960ms)
+    if (activeNote) {
+      const noteAnim = activeNote.animate(
         [
-          { opacity: 0, transform: 'translate3d(0, 0, 0)' },
-          { opacity: 1, transform: 'translate3d(0, 0, 0)', offset: 0.1 },
-          { opacity: 1, transform: branchTravel.destination, offset: 0.86 },
-          { opacity: 0, transform: branchTravel.destination },
-        ],
-        {
-          delay: 780,
-          duration: 520,
-          easing: 'cubic-bezier(0.77, 0, 0.175, 1)',
-          fill: 'both',
-        },
-      ),
-      output.animate(
-        [
-          { opacity: 0.64, transform: 'scale(0.96)' },
+          { opacity: 0.65, transform: 'scale(0.97)' },
           { opacity: 1, transform: 'scale(1)' },
         ],
         {
-          delay: 1190,
-          duration: 180,
+          delay: 760,
+          duration: 200,
           easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
-          fill: 'backwards',
-        },
-      ),
-    );
+          fill: 'both',
+        }
+      );
+      anims.push(noteAnim);
+    }
 
-    activeAnimationsRef.current = animations;
-    return () => animations.forEach((animation) => animation.cancel());
-  }, [motionRequest, route]);
+    activeAnimRef.current = anims;
 
-  const selectRoute = (nextRoute: Route, pointerInitiated: boolean) => {
+    animationTimerRef.current = setTimeout(() => {
+      animationTimerRef.current = null;
+      setAnimating(false);
+    }, 980);
+  }, [cancelActiveAnimation]);
+
+  const handleSelectRoute = (nextRoute: Route, pointerInitiated: boolean) => {
     setRoute(nextRoute);
-    setMotionRequest((request) => ({ id: request.id + 1, enabled: pointerInitiated }));
+
+    if (!pointerInitiated) {
+      cancelActiveAnimation();
+      setAnimating(false);
+      return;
+    }
+
+    runAnimation(nextRoute);
   };
+
+  useEffect(() => {
+    return cancelActiveAnimation;
+  }, [cancelActiveAnimation]);
+
+  const conditions = CONDITIONS_BY_ROUTE[route];
 
   return (
     <div
       className={styles.instrument}
       data-route={route}
-      data-motion={motionRequest.enabled ? 'on' : 'off'}
+      data-animating={animating ? 'true' : 'false'}
     >
       <div className={styles.instrumentHeader}>
-        <span>Conditional routing / {route === 'claim' ? '01' : '02'}</span>
-        <span><i aria-hidden="true" />Verified path</span>
+        <span className={styles.instrumentTagline}>
+          Conditional routing / {route === 'claim' ? '01' : '02'}
+        </span>
+        <span className={styles.instrumentLiveStatus}>
+          <i aria-hidden="true" />
+          Mainnet-proven flow
+        </span>
       </div>
 
       <div className={styles.instrumentStage} aria-live="polite">
+        {/* Node 1: Shielded Asset */}
         <div className={styles.assetNode}>
-          <span className={styles.assetGlyph} aria-hidden="true"><i /><i /><i /></span>
-          <span>Shielded asset</span>
+          <div className={styles.assetGlyph} aria-hidden="true">
+            <span className={styles.glyphRingOuter} />
+            <span className={styles.glyphRingInner} />
+            <span className={styles.glyphCore} />
+          </div>
+          <span className={styles.nodeLabel}>Shielded asset</span>
         </div>
 
-        <span ref={inputRailRef} className={styles.inputRail} aria-hidden="true">
-          <i ref={inputMarkerRef} className={styles.inputMarker} />
-        </span>
+        {/* Input Rail (Connecting Asset to Conditions) */}
+        <div className={styles.inputRailTrack} aria-hidden="true">
+          <svg
+            className={styles.inputRailSvg}
+            viewBox="0 0 100 20"
+            preserveAspectRatio="none"
+          >
+            <line x1="0" y1="10" x2="100" y2="10" className={styles.railBase} />
+            <line x1="0" y1="10" x2="100" y2="10" className={styles.railActiveHighlight} />
+            <circle
+              ref={dInputPipRef}
+              r="3.5"
+              className={styles.valuePip}
+              style={{ offsetPath: 'path("M 0 10 L 100 10")' }}
+            />
+          </svg>
+          {/* Mobile vertical input rail */}
+          <svg
+            className={styles.mobileInputRailSvg}
+            viewBox="0 0 20 100"
+            preserveAspectRatio="none"
+          >
+            <line x1="10" y1="0" x2="10" y2="100" className={styles.railBase} />
+            <line x1="10" y1="0" x2="10" y2="100" className={styles.railActiveHighlight} />
+            <circle
+              ref={mInputPipRef}
+              r="3.5"
+              className={styles.valuePip}
+              style={{ offsetPath: 'path("M 10 0 L 10 100")' }}
+            />
+          </svg>
+        </div>
 
-        <div className={styles.conditionGate}>
-          <div className={styles.gateHeading}>
-            <span className={styles.gateCore}>
+        {/* Node 2: Conditions Engine */}
+        <div className={styles.conditionGate} aria-label="Settlement condition verifications">
+          <div className={styles.gateHeader}>
+            <div className={styles.gateBrand}>
               <Image
                 className={styles.gateLogo}
                 src="/conditionalpay-mark.png"
@@ -204,110 +254,170 @@ export default function SettlementInstrument() {
                 width={512}
                 height={214}
               />
-            </span>
-            <span>
-              <small>ConditionalPay</small>
-              <strong>Conditions</strong>
-            </span>
+              <span>CONDITIONS</span>
+            </div>
+            <span className={styles.gateStageTag}>SETTLEMENT ENGINE</span>
           </div>
-          <ul className={styles.gateConditions} aria-label={`${route} route condition states`}>
-            {CONDITION_STATES[route].map(([label, status], index) => (
+
+          <ul className={styles.gateConditions} aria-label={`${route} condition states`}>
+            {conditions.map((item, index) => (
               <li
-                key={label}
-                ref={(element) => {
-                  conditionRefs.current[index] = element;
+                key={`${route}-${item.name}`}
+                ref={(el) => {
+                  conditionsRef.current[index] = el;
                 }}
+                className={item.verified ? styles.conditionVerified : styles.conditionNeutral}
               >
-                <i aria-hidden="true" />
-                <span>{label}</span>
-                <strong>{status}</strong>
+                <i className={styles.conditionStatusDot} aria-hidden="true" />
+                <span className={styles.conditionName}>{item.name}</span>
+                <strong className={styles.conditionStatus}>{item.status}</strong>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className={styles.routeMap} aria-label="Claim and refund settlement outcomes">
+        {/* Branching Rail (Connecting Conditions to Output Notes) */}
+        <div className={styles.branchRailTrack} aria-hidden="true">
+          {/* Desktop Symmetrical Branch SVG */}
           <svg
-            className={`${styles.routeFork} ${styles.routeForkDesktop}`}
-            viewBox="0 0 32 100"
+            className={styles.desktopBranchSvg}
+            viewBox="0 0 100 200"
             preserveAspectRatio="none"
-            aria-hidden="true"
           >
+            {/* Neutral base paths */}
             <path
-              className={styles.routeForkBase}
-              d="M0 50H11C15 50 16 47 16 43V32C16 27 19 25 24 25H32M16 50V68C16 73 19 75 24 75H32"
+              className={styles.railBase}
+              d="M 0 100 L 24 100 C 50 100, 52 26, 76 26 L 100 26"
             />
             <path
-              className={`${styles.routeForkActive} ${styles.claimForkPath}`}
-              d="M0 50H11C15 50 16 47 16 43V32C16 27 19 25 24 25H32"
+              className={styles.railBase}
+              d="M 0 100 L 24 100 C 50 100, 52 174, 76 174 L 100 174"
+            />
+
+            {/* Active mineral green highlighted paths */}
+            <path
+              className={`${styles.railActiveBranch} ${styles.claimBranchActive}`}
+              d="M 0 100 L 24 100 C 50 100, 52 26, 76 26 L 100 26"
+              data-active={route === 'claim'}
             />
             <path
-              className={`${styles.routeForkActive} ${styles.refundForkPath}`}
-              d="M0 50H11C15 50 16 53 16 57V68C16 73 19 75 24 75H32"
+              className={`${styles.railActiveBranch} ${styles.refundBranchActive}`}
+              d="M 0 100 L 24 100 C 50 100, 52 174, 76 174 L 100 174"
+              data-active={route === 'refund'}
+            />
+
+            {/* Shared branching junction origin */}
+            <circle cx="24" cy="100" r="2.5" className={styles.junctionOrigin} />
+
+            {/* Value pip traveling along branch */}
+            <circle
+              ref={dBranchPipRef}
+              r="3.5"
+              className={styles.valuePip}
+              style={{
+                offsetPath: `path("${
+                  route === 'claim'
+                    ? 'M 0 100 L 24 100 C 50 100, 52 26, 76 26 L 100 26'
+                    : 'M 0 100 L 24 100 C 50 100, 52 174, 76 174 L 100 174'
+                }")`,
+              }}
             />
           </svg>
+
+          {/* Mobile Vertical Symmetrical Branch SVG */}
           <svg
-            className={`${styles.routeFork} ${styles.routeForkMobile}`}
-            viewBox="0 0 100 40"
+            className={styles.mobileBranchSvg}
+            viewBox="0 0 100 44"
             preserveAspectRatio="none"
-            aria-hidden="true"
           >
+            <path className={styles.railBase} d="M 50 0 L 50 14 C 50 30, 25 30, 25 44" />
+            <path className={styles.railBase} d="M 50 0 L 50 14 C 50 30, 75 30, 75 44" />
+
             <path
-              className={styles.routeForkBase}
-              d="M50 0V11C50 15 47 16 43 16H32C27 16 25 19 25 24V40M50 16H68C73 16 75 19 75 24V40"
+              className={`${styles.railActiveBranch} ${styles.claimBranchActive}`}
+              d="M 50 0 L 50 14 C 50 30, 25 30, 25 44"
+              data-active={route === 'claim'}
             />
             <path
-              className={`${styles.routeForkActive} ${styles.claimForkPath}`}
-              d="M50 0V11C50 15 47 16 43 16H32C27 16 25 19 25 24V40"
+              className={`${styles.railActiveBranch} ${styles.refundBranchActive}`}
+              d="M 50 0 L 50 14 C 50 30, 75 30, 75 44"
+              data-active={route === 'refund'}
             />
-            <path
-              className={`${styles.routeForkActive} ${styles.refundForkPath}`}
-              d="M50 0V11C50 15 53 16 57 16H68C73 16 75 19 75 24V40"
+
+            <circle cx="50" cy="14" r="2.5" className={styles.junctionOrigin} />
+
+            <circle
+              ref={mBranchPipRef}
+              r="3.5"
+              className={styles.valuePip}
+              style={{
+                offsetPath: `path("${
+                  route === 'claim'
+                    ? 'M 50 0 L 50 14 C 50 30, 25 30, 25 44'
+                    : 'M 50 0 L 50 14 C 50 30, 75 30, 75 44'
+                }")`,
+              }}
             />
           </svg>
-          <div className={`${styles.routeLane} ${styles.claimLane}`}>
-            <span ref={claimTrackRef} className={styles.routeTrack} aria-hidden="true">
-              <span ref={claimProgressRef} className={styles.routeProgress} />
-              <i ref={claimMarkerRef} className={styles.settlementMarker} />
-            </span>
-            <div ref={claimOutputRef} className={styles.routeOutput} aria-current={route === 'claim'}>
-              <span className={styles.routeNoteGlyph} aria-hidden="true"><i /><i /></span>
-              <span className={styles.routeCopy}>
-                <small>CLAIM</small>
-                <strong>Claimed shielded note</strong>
-              </span>
+        </div>
+
+        {/* Node 3 & 4: Terminal Output Notes */}
+        <div className={styles.outputsContainer}>
+          {/* CLAIM Note */}
+          <div
+            ref={claimNoteRef}
+            className={`${styles.outputCard} ${styles.claimOutputCard}`}
+            data-active={route === 'claim'}
+          >
+            <div className={styles.outputGlyph} aria-hidden="true">
+              <span className={styles.outputGlyphRing} />
+              <span className={styles.outputGlyphDot} />
+            </div>
+            <div className={styles.outputContent}>
+              <small className={styles.outputKicker}>CLAIM</small>
+              <strong className={styles.outputTitle}>Claimed shielded note</strong>
             </div>
           </div>
 
-          <div className={`${styles.routeLane} ${styles.refundLane}`}>
-            <span ref={refundTrackRef} className={styles.routeTrack} aria-hidden="true">
-              <span ref={refundProgressRef} className={styles.routeProgress} />
-              <i ref={refundMarkerRef} className={styles.settlementMarker} />
-            </span>
-            <div ref={refundOutputRef} className={styles.routeOutput} aria-current={route === 'refund'}>
-              <span className={styles.routeNoteGlyph} aria-hidden="true"><i /><i /></span>
-              <span className={styles.routeCopy}>
-                <small>REFUND</small>
-                <strong>Refunded shielded note</strong>
-              </span>
+          {/* REFUND Note */}
+          <div
+            ref={refundNoteRef}
+            className={`${styles.outputCard} ${styles.refundOutputCard}`}
+            data-active={route === 'refund'}
+          >
+            <div className={styles.outputGlyph} aria-hidden="true">
+              <span className={styles.outputGlyphRing} />
+              <span className={styles.outputGlyphDot} />
+            </div>
+            <div className={styles.outputContent}>
+              <small className={styles.outputKicker}>REFUND</small>
+              <strong className={styles.outputTitle}>Refunded shielded note</strong>
             </div>
           </div>
         </div>
       </div>
 
       <div className={styles.instrumentControls} aria-label="Preview settlement route">
-        <span>Resolve through</span>
-        <div>
-          {(['claim', 'refund'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={route === item}
-              onClick={(event) => selectRoute(item, event.detail > 0)}
-            >
-              {item.toUpperCase()}
-            </button>
-          ))}
+        <span className={styles.controlsLabel}>Resolve through</span>
+        <div className={styles.controlToggle} role="group" aria-label="Settlement path switch">
+          <button
+            id={`${baseId}-claim-btn`}
+            type="button"
+            className={styles.routeBtn}
+            aria-pressed={route === 'claim'}
+            onClick={(event) => handleSelectRoute('claim', event.detail > 0)}
+          >
+            CLAIM
+          </button>
+          <button
+            id={`${baseId}-refund-btn`}
+            type="button"
+            className={styles.routeBtn}
+            aria-pressed={route === 'refund'}
+            onClick={(event) => handleSelectRoute('refund', event.detail > 0)}
+          >
+            REFUND
+          </button>
         </div>
       </div>
     </div>

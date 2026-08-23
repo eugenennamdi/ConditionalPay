@@ -11,7 +11,7 @@ const EXAMPLES = [
     api: 'buildCreateActions',
     result: 'actions',
     arguments: ['conditionalPay', 'createParams'],
-    topology: 'Withdraw → Invoke',
+    topology: 'WITHDRAW → INVOKE',
   },
   {
     id: 'claim',
@@ -20,7 +20,7 @@ const EXAMPLES = [
     api: 'buildClaimActions',
     result: 'actions',
     arguments: ['conditionalPay', 'claimParams'],
-    topology: 'Open note → Invoke',
+    topology: 'TRANSFER (OPEN) → INVOKE',
   },
   {
     id: 'refund',
@@ -29,7 +29,7 @@ const EXAMPLES = [
     api: 'buildRefundActions',
     result: 'actions',
     arguments: ['conditionalPay', 'refundParams'],
-    topology: 'Open note → Invoke',
+    topology: 'TRANSFER (OPEN) → INVOKE',
   },
   {
     id: 'query',
@@ -38,7 +38,7 @@ const EXAMPLES = [
     api: 'getPayment',
     result: 'payment',
     arguments: ['provider', 'conditionalPay', 'paymentId'],
-    topology: 'Read-only query',
+    topology: 'READ-ONLY QUERY',
   },
 ] as const;
 
@@ -103,7 +103,7 @@ export default function CodeWorkspace() {
     <div className={styles.codeWorkspace}>
       <div className={styles.workspaceTopline}>
         <span>ConditionalPay SDK</span>
-        <span>TypeScript</span>
+        <span>Private workspace SDK</span>
       </div>
       <div
         className={styles.codeTabs}

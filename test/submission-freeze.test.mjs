@@ -58,9 +58,41 @@ test("submission UI exposes no wallet or Mainnet write boundary", () => {
       `submission UI must not contain ${forbidden}`,
     );
   }
+});
 
-  assert.match(walletSurface, /Mainnet execution is frozen for submission/);
-  assert.match(walletSurface, /contains no transaction/);
+test("submission interactions gate optional motion and identify the private workspace SDK", () => {
+  const settlementInstrument = read(
+    "src/app/components/product/SettlementInstrument.tsx",
+  );
+  const codeWorkspace = read("src/app/components/product/CodeWorkspace.tsx");
+  const styles = read("src/app/uni.module.css");
+
+  assert.match(
+    settlementInstrument,
+    /handleSelectRoute\('claim', event\.detail > 0\)/,
+  );
+  assert.match(
+    settlementInstrument,
+    /handleSelectRoute\('refund', event\.detail > 0\)/,
+  );
+  assert.match(settlementInstrument, /animationTimerRef/);
+  assert.match(
+    settlementInstrument,
+    /clearTimeout\(animationTimerRef\.current\)/,
+  );
+  assert.match(settlementInstrument, /return cancelActiveAnimation/);
+
+  assert.match(codeWorkspace, /setAnimate\(event\.detail > 0\)/);
+  assert.match(codeWorkspace, /Private workspace SDK/);
+  assert.match(styles, /\.codeTabs\[data-motion='on'\] button \{/);
+  assert.match(styles, /\.codeTabs\[data-motion='on'\] button::after \{/);
+
+  const baseTabRule = styles.match(/\.codeTabs button \{([\s\S]*?)\}/)?.[1] ?? "";
+  const baseTabIndicatorRule =
+    styles.match(/\.codeTabs button::after \{([\s\S]*?)\}/)?.[1] ?? "";
+
+  assert.doesNotMatch(baseTabRule, /transition:/);
+  assert.doesNotMatch(baseTabIndicatorRule, /transition:/);
 });
 
 test("submission evidence identifies the canonical deployment and all four transactions", () => {

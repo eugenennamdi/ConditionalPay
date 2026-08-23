@@ -15,9 +15,9 @@ Post-deployment reads confirmed that `get_strk20_pool()` equals the canonical ST
 | Step | Transaction | Block | Execution / finality | State transition | Authenticated ConditionalPay event |
 |---|---|---:|---|---|---|
 | TX1 CREATE A | [`0x47edc8e74fc08c4726a817a23085a2ae2dd95590fb6a32d3b3c5b5159e586e6`](https://voyager.online/tx/0x47edc8e74fc08c4726a817a23085a2ae2dd95590fb6a32d3b3c5b5159e586e6) | 13701781 | `SUCCEEDED / ACCEPTED_ON_L1` | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
-| TX2 CLAIM A | [`0xde61c431a92dabc7b8672cd08cdce0b479b83ca261c0591992a84e6e7779b7`](https://voyager.online/tx/0xde61c431a92dabc7b8672cd08cdce0b479b83ca261c0591992a84e6e7779b7) | 13704626 | `SUCCEEDED / ACCEPTED_ON_L2` | `ACTIVE -> CLAIMED` | `PaymentClaimed` |
-| TX3 CREATE B | [`0x2f2f88ab25f64a619aa05dcaff7c2af85efc6cd086a229696ac8edc3bdd6d26`](https://voyager.online/tx/0x2f2f88ab25f64a619aa05dcaff7c2af85efc6cd086a229696ac8edc3bdd6d26) | 13707204 | `SUCCEEDED / ACCEPTED_ON_L2` | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
-| TX4 REFUND B | [`0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d`](https://voyager.online/tx/0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d) | 13708549 | `SUCCEEDED / ACCEPTED_ON_L2` | `ACTIVE -> REFUNDED` | `PaymentRefunded` |
+| TX2 CLAIM A | [`0xde61c431a92dabc7b8672cd08cdce0b479b83ca261c0591992a84e6e7779b7`](https://voyager.online/tx/0xde61c431a92dabc7b8672cd08cdce0b479b83ca261c0591992a84e6e7779b7) | 13704626 | `SUCCEEDED / ACCEPTED_ON_L1` | `ACTIVE -> CLAIMED` | `PaymentClaimed` |
+| TX3 CREATE B | [`0x2f2f88ab25f64a619aa05dcaff7c2af85efc6cd086a229696ac8edc3bdd6d26`](https://voyager.online/tx/0x2f2f88ab25f64a619aa05dcaff7c2af85efc6cd086a229696ac8edc3bdd6d26) | 13707204 | `SUCCEEDED / ACCEPTED_ON_L1` | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
+| TX4 REFUND B | [`0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d`](https://voyager.online/tx/0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d) | 13708549 | `SUCCEEDED / ACCEPTED_ON_L1` | `ACTIVE -> REFUNDED` | `PaymentRefunded` |
 
 The events above were authenticated by contract address and event selector. They must not be attributed using each transaction's sender because STRK20 private transactions are relayed.
 
