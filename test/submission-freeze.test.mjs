@@ -29,33 +29,40 @@ function readProductionSources(directory = resolve(repositoryRoot, "src")) {
   return sources;
 }
 
-test("submission UI exposes no wallet or Mainnet write boundary", () => {
+test("root route imports no wallet or Console execution boundary", () => {
   const page = read("src/app/page.tsx");
-  const walletSurface = read(
-    "src/app/components/client/WalletHandle/WalletAccountV6Tag.tsx",
-  );
-
-  assert.equal(page.includes("SelectWallet"), false);
+  const layout = read("src/app/layout.tsx");
 
   for (const forbidden of [
+    "SelectWallet",
+    "WalletConnect",
     "strk20InvokeTransaction",
-    "strk20Balances",
-    "deployContract",
-    "PaymentAClaimExecutionPanel",
-    "PaymentBCreateExecutionPanel",
-    "PaymentBRefundExecutionPanel",
-    "paymentBTx3Configuration",
-    "Execute CREATE",
-    "Execute TX4",
-    "Run echo",
-    "Self transfer",
-    "Unshield",
-    "Shield",
+    "buildCreateActions",
+    "buildClaimActions",
+    "buildRefundActions",
+    "generateSecurePreimage",
+    "generateSecureNonce",
+    "walletContext",
+    "console/",
+    "@conditionalpay/sdk",
   ]) {
     assert.equal(
-      walletSurface.includes(forbidden),
+      page.includes(forbidden),
       false,
-      `submission UI must not contain ${forbidden}`,
+      `root page.tsx must not contain '${forbidden}'`,
+    );
+  }
+
+  for (const forbidden of [
+    "walletContext",
+    "WalletAccountV6",
+    "SelectWallet",
+    "WalletConnect",
+  ]) {
+    assert.equal(
+      layout.includes(forbidden),
+      false,
+      `root layout.tsx must not contain '${forbidden}'`,
     );
   }
 });
@@ -108,7 +115,7 @@ test("submission evidence identifies the canonical deployment and all four trans
     "0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d",
   ]);
   assert.equal(submission.demo_video, "");
-  assert.equal(submission.demo_url, "");
+  assert.equal(submission.demo_url, "https://conditionalpay.vercel.app");
 });
 
 test("stale evidence harness modules are absent from main", () => {
@@ -131,13 +138,14 @@ test("stale evidence harness modules are absent from main", () => {
   }
 });
 
-test("completed evidence Payment IDs are absent from production source", () => {
+test("completed evidence Payment IDs are confined to verifiedDemoEvidence.ts", () => {
   const evidencePaymentIds = [
     "0x19b3f6176561b6054a803a0d499c73252413eaa8756dda3990f605ef9273ac3",
     "0x7e0d3d4225351e4436e7b5b62c28412fb2b876ab904dda8a51c0be19aeba134",
   ];
 
   for (const { path, source } of readProductionSources()) {
+    if (path.includes("verifiedDemoEvidence")) continue;
     for (const paymentId of evidencePaymentIds) {
       assert.equal(
         source.includes(paymentId),
@@ -159,16 +167,17 @@ test("production source contains no evidence recovery machinery or browser secre
       pattern: /payment-b-7e0d3d422535\.encrypted\.json/i,
     },
     {
-      label: "plaintext passphrase file or property",
-      pattern: /(?:["'`][^"'`\n]*\.passphrase["'`]|\b[A-Za-z_$][\w$]*\.passphrase\b)/,
+      label: "plaintext passphrase file reference",
+      pattern: /["'`][^"'`\n]*\.passphrase["'`]/i,
     },
     {
-      label: "encrypted credential import",
-      pattern: /\bimportEncryptedCredentials\b/,
+      label: "hardcoded passphrase literal in source",
+      pattern: /(?:passphrase|password)\s*[:=]\s*["'`][^"'`\n]{8,}["'`]/i,
     },
     {
-      label: "evidence preimage identifier",
-      pattern: /\b(?:claimPreimage|refundPreimage|claim_preimage|refund_preimage)\b/,
+      label: "credential or preimage logging in source",
+      pattern:
+        /console\.(?:log|warn|error|info|debug)\s*\([^)]*\b(?:claimPreimage|refundPreimage|claim_preimage|refund_preimage|rawPreimage)\b/,
     },
     {
       label: "browser secret persistence API",

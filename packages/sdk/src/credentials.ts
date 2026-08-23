@@ -63,7 +63,7 @@ export function generateSecureNonce(customEntropy?: () => Uint8Array): string {
 }
 
 /**
- * Bearer credential bundle for an active execution flow.
+ * Bearer credential bundle for an active execution flow (historical dual-payment bundle).
  */
 export interface BearerCredentialBundle {
   paymentA: {
@@ -81,10 +81,34 @@ export interface BearerCredentialBundle {
 }
 
 /**
- * User-controlled password-encrypted envelope for safe credential backup & recovery.
+ * Bearer credentials for a single ConditionalPay payment.
+ * Console-oriented: one payment at a time.
+ */
+export interface SinglePaymentCredentials {
+  paymentId: string;
+  claimPreimage: string;
+  refundPreimage: string;
+  nonce: string;
+}
+
+/**
+ * User-controlled password-encrypted envelope for safe credential backup & recovery (historical v1.0).
  */
 export interface EncryptedCredentialEnvelope {
   version: '1.0';
+  cipher: 'AES-GCM-256';
+  kdf: 'PBKDF2-SHA256';
+  iterations: number;
+  saltHex: string; // 16 bytes
+  ivHex: string; // 12 bytes
+  ciphertextHex: string;
+}
+
+/**
+ * User-controlled password-encrypted envelope for safe single-payment credential backup & recovery (v1.1).
+ */
+export interface SinglePaymentEncryptedEnvelope {
+  version: '1.1';
   cipher: 'AES-GCM-256';
   kdf: 'PBKDF2-SHA256';
   iterations: number;
@@ -114,19 +138,42 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-/**
- * Exports bearer credentials to a secure password-encrypted envelope (AES-GCM-256 + PBKDF2-SHA256).
- *
- * @param bundle Bearer credential bundle to encrypt.
- * @param passphrase User passphrase used to derive the 256-bit AES-GCM encryption key.
- * @param iterations Optional iteration count (defaults to OWASP-recommended 600,000).
- * @returns Encrypted envelope safe for user-controlled offline backup.
- */
-export async function exportEncryptedCredentials(
-  bundle: BearerCredentialBundle,
+function isBearerCredentialBundle(data: unknown): data is BearerCredentialBundle {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  return Boolean(
+    d.paymentA &&
+      typeof d.paymentA === 'object' &&
+      d.paymentB &&
+      typeof d.paymentB === 'object',
+  );
+}
+
+function isSinglePaymentCredentials(data: unknown): data is SinglePaymentCredentials {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  return (
+    typeof d.paymentId === 'string' &&
+    typeof d.claimPreimage === 'string' &&
+    typeof d.refundPreimage === 'string' &&
+    typeof d.nonce === 'string'
+  );
+}
+
+async function encryptEnvelopePayload<V extends '1.0' | '1.1'>(
+  payload: unknown,
+  version: V,
   passphrase: string,
-  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
-): Promise<EncryptedCredentialEnvelope> {
+  iterations: number,
+): Promise<{
+  version: V;
+  cipher: 'AES-GCM-256';
+  kdf: 'PBKDF2-SHA256';
+  iterations: number;
+  saltHex: string;
+  ivHex: string;
+  ciphertextHex: string;
+}> {
   if (!passphrase || passphrase.length < 8) {
     throw new Error('Passphrase must be at least 8 characters long');
   }
@@ -163,7 +210,7 @@ export async function exportEncryptedCredentials(
     ['encrypt'],
   );
 
-  const plaintext = encoder.encode(JSON.stringify(bundle));
+  const plaintext = encoder.encode(JSON.stringify(payload));
   const encrypted = await globalThis.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     aesKey,
@@ -171,7 +218,7 @@ export async function exportEncryptedCredentials(
   );
 
   return {
-    version: '1.0',
+    version,
     cipher: 'AES-GCM-256',
     kdf: 'PBKDF2-SHA256',
     iterations,
@@ -181,18 +228,20 @@ export async function exportEncryptedCredentials(
   };
 }
 
-/**
- * Imports and restores bearer credentials from a password-encrypted envelope.
- *
- * @param envelope The encrypted envelope to decrypt.
- * @param passphrase User passphrase used during export.
- * @returns Restored BearerCredentialBundle.
- */
-export async function importEncryptedCredentials(
-  envelope: EncryptedCredentialEnvelope,
+async function decryptEnvelopePayload<T>(
+  envelope: {
+    version: string;
+    cipher: string;
+    iterations: number;
+    saltHex: string;
+    ivHex: string;
+    ciphertextHex: string;
+  },
+  expectedVersion: '1.0' | '1.1',
   passphrase: string,
-): Promise<BearerCredentialBundle> {
-  if (envelope.version !== '1.0' || envelope.cipher !== 'AES-GCM-256') {
+  validator: (data: unknown) => data is T,
+): Promise<T> {
+  if (envelope.version !== expectedVersion || envelope.cipher !== 'AES-GCM-256') {
     throw new Error(`Unsupported envelope format: ${envelope.cipher} v${envelope.version}`);
   }
   if (typeof envelope.iterations !== 'number' || envelope.iterations < 1000) {
@@ -233,9 +282,75 @@ export async function importEncryptedCredentials(
     );
 
     const decoder = new TextDecoder();
-    const parsed = JSON.parse(decoder.decode(decrypted)) as BearerCredentialBundle;
+    const parsed = JSON.parse(decoder.decode(decrypted));
+    if (!validator(parsed)) {
+      throw new Error('Failed to decrypt credentials: corrupted or unexpected payload schema');
+    }
     return parsed;
-  } catch {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('corrupted or unexpected payload schema')) {
+      throw err;
+    }
     throw new Error('Failed to decrypt credentials: invalid passphrase or corrupted envelope');
   }
+}
+
+/**
+ * Exports bearer credentials to a secure password-encrypted envelope (AES-GCM-256 + PBKDF2-SHA256).
+ *
+ * @param bundle Bearer credential bundle to encrypt.
+ * @param passphrase User passphrase used to derive the 256-bit AES-GCM encryption key.
+ * @param iterations Optional iteration count (defaults to OWASP-recommended 600,000).
+ * @returns Encrypted envelope safe for user-controlled offline backup.
+ */
+export async function exportEncryptedCredentials(
+  bundle: BearerCredentialBundle,
+  passphrase: string,
+  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+): Promise<EncryptedCredentialEnvelope> {
+  return encryptEnvelopePayload(bundle, '1.0', passphrase, iterations);
+}
+
+/**
+ * Imports and restores bearer credentials from a password-encrypted envelope.
+ *
+ * @param envelope The encrypted envelope to decrypt.
+ * @param passphrase User passphrase used during export.
+ * @returns Restored BearerCredentialBundle.
+ */
+export async function importEncryptedCredentials(
+  envelope: EncryptedCredentialEnvelope,
+  passphrase: string,
+): Promise<BearerCredentialBundle> {
+  return decryptEnvelopePayload(envelope, '1.0', passphrase, isBearerCredentialBundle);
+}
+
+/**
+ * Exports single payment credentials to a password-encrypted envelope (v1.1 AES-GCM-256 + PBKDF2-SHA256).
+ *
+ * @param credentials Single payment credentials to encrypt.
+ * @param passphrase User passphrase used to derive the 256-bit AES-GCM encryption key.
+ * @param iterations Optional iteration count (defaults to OWASP-recommended 600,000).
+ * @returns Encrypted envelope safe for user-controlled single payment backup.
+ */
+export async function exportSinglePaymentCredentials(
+  credentials: SinglePaymentCredentials,
+  passphrase: string,
+  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+): Promise<SinglePaymentEncryptedEnvelope> {
+  return encryptEnvelopePayload(credentials, '1.1', passphrase, iterations);
+}
+
+/**
+ * Imports and restores single payment credentials from a password-encrypted envelope (v1.1).
+ *
+ * @param envelope The encrypted envelope to decrypt.
+ * @param passphrase User passphrase used during export.
+ * @returns Restored SinglePaymentCredentials.
+ */
+export async function importSinglePaymentCredentials(
+  envelope: SinglePaymentEncryptedEnvelope,
+  passphrase: string,
+): Promise<SinglePaymentCredentials> {
+  return decryptEnvelopePayload(envelope, '1.1', passphrase, isSinglePaymentCredentials);
 }

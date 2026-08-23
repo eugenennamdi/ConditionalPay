@@ -4,9 +4,12 @@ import type { RpcTypeToMessageMap, STRK20_ACTION } from '@starknet-io/types-js';
 import {
   BearerCredentialBundle,
   exportEncryptedCredentials,
+  exportSinglePaymentCredentials,
   generateSecureNonce,
   generateSecurePreimage,
   importEncryptedCredentials,
+  importSinglePaymentCredentials,
+  SinglePaymentCredentials,
 } from '../src/credentials.js';
 import {
   calculateRequiredShieldedBalance,
@@ -160,6 +163,128 @@ describe('Mainnet Execution Plan Generator & Secure Credentials', () => {
         () => exportEncryptedCredentials(mockBundle, 'short'),
         /Passphrase must be at least 8 characters long/,
       );
+    });
+  });
+
+  describe('SinglePaymentCredentials Backup & Restore (v1.1)', () => {
+    const mockSingle: SinglePaymentCredentials = {
+      paymentId: '0x19b3f6176561b6054a803a0d499c73252413eaa8756dda3990f605ef9273ac3',
+      claimPreimage: '0xa111b222c333d444e555f6660111222333444555666777888999aaabbbcccddd',
+      refundPreimage: '0xb111c222d333e444f5550666111122223333444455556666777788889999aaaa',
+      nonce: '0x101',
+    };
+
+    it('exports with v1.1 and default OWASP 600,000 iterations and decrypts accurately', async () => {
+      const password = 'StrongConsolePassword123!';
+      const envelope = await exportSinglePaymentCredentials(mockSingle, password);
+
+      assert.equal(envelope.version, '1.1');
+      assert.equal(envelope.cipher, 'AES-GCM-256');
+      assert.equal(envelope.kdf, 'PBKDF2-SHA256');
+      assert.equal(envelope.iterations, 600000, 'Must default to 600,000 iterations');
+      assert.ok(envelope.ciphertextHex.length > 0);
+
+      const restored = await importSinglePaymentCredentials(envelope, password);
+      assert.deepEqual(restored, mockSingle);
+      assert.equal(restored.paymentId, mockSingle.paymentId);
+      assert.equal(restored.claimPreimage, mockSingle.claimPreimage);
+      assert.equal(restored.refundPreimage, mockSingle.refundPreimage);
+      assert.equal(restored.nonce, mockSingle.nonce);
+    });
+
+    it('rejects decryption with incorrect password', async () => {
+      const envelope = await exportSinglePaymentCredentials(mockSingle, 'CorrectPassword123!', 10000);
+      await assert.rejects(
+        () => importSinglePaymentCredentials(envelope, 'WrongPassword456!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('strictly fails decryption when ciphertext is tampered', async () => {
+      const envelope = await exportSinglePaymentCredentials(mockSingle, 'TamperTestPass123!', 10000);
+      const tamperedHex =
+        envelope.ciphertextHex.slice(0, -1) + (envelope.ciphertextHex.endsWith('a') ? 'b' : 'a');
+      const tamperedEnvelope = { ...envelope, ciphertextHex: tamperedHex };
+
+      await assert.rejects(
+        () => importSinglePaymentCredentials(tamperedEnvelope, 'TamperTestPass123!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('strictly fails decryption when IV is tampered', async () => {
+      const envelope = await exportSinglePaymentCredentials(mockSingle, 'TamperTestPass123!', 10000);
+      const tamperedIv =
+        envelope.ivHex.slice(0, -1) + (envelope.ivHex.endsWith('0') ? '1' : '0');
+      const tamperedEnvelope = { ...envelope, ivHex: tamperedIv };
+
+      await assert.rejects(
+        () => importSinglePaymentCredentials(tamperedEnvelope, 'TamperTestPass123!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('strictly fails decryption when salt is tampered', async () => {
+      const envelope = await exportSinglePaymentCredentials(mockSingle, 'TamperTestPass123!', 10000);
+      const tamperedSalt =
+        envelope.saltHex.slice(0, -1) + (envelope.saltHex.endsWith('0') ? '1' : '0');
+      const tamperedEnvelope = { ...envelope, saltHex: tamperedSalt };
+
+      await assert.rejects(
+        () => importSinglePaymentCredentials(tamperedEnvelope, 'TamperTestPass123!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('cross-format isolation: historical v1.0 bundle cannot import through importSinglePaymentCredentials', async () => {
+      const historicalBundle: BearerCredentialBundle = {
+        paymentA: { paymentId: '0x1', claimPreimage: '0x2', refundPreimage: '0x3', nonce: '0x4' },
+        paymentB: { paymentId: '0x5', claimPreimage: '0x6', refundPreimage: '0x7', nonce: '0x8' },
+      };
+      const v1Envelope = await exportEncryptedCredentials(historicalBundle, 'CommonPassword123!', 10000);
+      assert.equal(v1Envelope.version, '1.0');
+
+      await assert.rejects(
+        // @ts-expect-error test cross-envelope type safety
+        () => importSinglePaymentCredentials(v1Envelope, 'CommonPassword123!'),
+        /Unsupported envelope format/,
+      );
+    });
+
+    it('cross-format isolation: v1.1 SinglePaymentCredentials envelope cannot import through historical importEncryptedCredentials', async () => {
+      const v11Envelope = await exportSinglePaymentCredentials(mockSingle, 'CommonPassword123!', 10000);
+      assert.equal(v11Envelope.version, '1.1');
+
+      await assert.rejects(
+        // @ts-expect-error test cross-envelope type safety
+        () => importEncryptedCredentials(v11Envelope, 'CommonPassword123!'),
+        /Unsupported envelope format/,
+      );
+    });
+
+    it('strictly prevents plaintext preimages from appearing in serialized SinglePayment envelope JSON', async () => {
+      const envelope = await exportSinglePaymentCredentials(mockSingle, 'NoLeakPassword123!', 10000);
+      const json = JSON.stringify(envelope);
+
+      assert.ok(!json.includes(mockSingle.claimPreimage), 'No claimPreimage in JSON');
+      assert.ok(!json.includes(mockSingle.refundPreimage), 'No refundPreimage in JSON');
+      assert.ok(!json.includes(mockSingle.nonce), 'No nonce in JSON');
+    });
+
+    it('rejects export if passphrase is too short', async () => {
+      await assert.rejects(
+        () => exportSinglePaymentCredentials(mockSingle, 'short'),
+        /Passphrase must be at least 8 characters long/,
+      );
+    });
+
+    it('canonical package root exposes SinglePaymentCredentials APIs', async () => {
+      const sdkRoot = await import('../src/index.js');
+      assert.equal(typeof sdkRoot.exportSinglePaymentCredentials, 'function');
+      assert.equal(typeof sdkRoot.importSinglePaymentCredentials, 'function');
+      assert.equal(typeof sdkRoot.exportEncryptedCredentials, 'function');
+      assert.equal(typeof sdkRoot.importEncryptedCredentials, 'function');
+      assert.equal(sdkRoot.DEFAULT_PBKDF2_ITERATIONS, 600_000);
     });
   });
 
