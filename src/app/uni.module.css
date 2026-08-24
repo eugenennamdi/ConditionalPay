@@ -121,10 +121,43 @@
   transition: color 140ms ease;
 }
 
-.navCta {
+.navActions {
   display: inline-flex;
   align-items: center;
   justify-self: end;
+  gap: 14px;
+}
+
+.headerConsoleCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--forest);
+  color: #eff8f1;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  border: 1px solid rgba(20, 29, 23, 0.12);
+  transition: all 140ms ease;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.headerConsoleCta:hover {
+  background: #19352c;
+  color: #ffffff;
+}
+
+.headerConsoleCta:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+.navCta {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
   color: var(--ink-soft);
   font-size: 12.5px;
@@ -1757,10 +1790,63 @@
   text-align: center;
 }
 
-.footerLinks {
+.footerActions {
   display: flex;
   justify-content: flex-end;
-  gap: 20px;
+  align-items: center;
+  gap: 12px;
+}
+
+.footerIconLink,
+.backToTopLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  text-decoration: none;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.footerIconLink:hover,
+.backToTopLink:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: rgba(20, 29, 23, 0.04);
+}
+
+.footerIconLink:focus-visible,
+.backToTopLink:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.footerIconLink svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.backToTopLink svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  transition: transform 180ms var(--ease-out);
+}
+
+.backToTopLink:hover svg {
+  transform: translateY(-2.5px);
+}
+
+.backToTopLink:active svg {
+  transform: translateY(-4px);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2298,9 +2384,19 @@
     text-align: left;
   }
 
-  .footerLinks {
+  .footerActions {
     justify-content: flex-start;
-    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .headerConsoleCta {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .navActions {
+    gap: 8px;
   }
 }
 
@@ -2317,14 +2413,18 @@
   .traceDetails a svg,
   .contractRow a svg,
   .docLinks a svg,
-  .navCta svg {
+  .navCta svg,
+  .backToTopLink svg {
     transition-duration: 0.01ms !important;
+    transform: none !important;
   }
 
   .traceDetails a:hover svg,
   .contractRow a:hover svg,
   .docLinks a:hover svg,
-  .navCta:hover svg {
-    transform: none;
+  .navCta:hover svg,
+  .backToTopLink:hover svg,
+  .backToTopLink:active svg {
+    transform: none !important;
   }
 }

@@ -40,32 +40,27 @@ export default function ConsoleShell() {
       {/* Top Header */}
       <header className={styles.consoleHeaderSticky}>
         <div className={styles.consoleNav}>
-          <div className={styles.brandLockup}>
-            <Link href="/" className={styles.brandLockup} title="Return to ConditionalPay homepage">
-              <Image
-                src="/conditionalpay-mark.png"
-                alt="ConditionalPay"
-                width={28}
-                height={16}
-                className={styles.brandMark}
-                priority
-              />
-              <div className={styles.brandTitleGroup}>
-                <span className={styles.brandTitle}>ConditionalPay</span>
-                <span className={styles.brandDivider}>/</span>
-                <span className={styles.consoleLabel}>Console</span>
-              </div>
-            </Link>
-          </div>
+          <Link href="/" className={styles.brandLockup} title="Return to ConditionalPay homepage">
+            <Image
+              src="/conditionalpay-mark.png"
+              alt="ConditionalPay"
+              width={28}
+              height={16}
+              className={styles.brandMark}
+              priority
+            />
+            <div className={styles.brandTitleGroup}>
+              <span className={styles.brandTitle}>ConditionalPay</span>
+              <span className={styles.brandDivider}>/</span>
+              <span className={styles.consoleLabel}>Console</span>
+            </div>
+          </Link>
 
           <div className={styles.headerMeta}>
             <div className={styles.networkBadge} aria-label="Connected to Starknet Mainnet">
               <span className={styles.networkDot} aria-hidden="true" />
               <span>Mainnet</span>
             </div>
-            <Link href="/" className={styles.backProtocolLink}>
-              ← Protocol
-            </Link>
           </div>
         </div>
       </header>
@@ -115,7 +110,6 @@ export default function ConsoleShell() {
             onClick={() => setActiveMode('verifiedDemo')}
           >
             <span>Verified Demo</span>
-            <span className={`${styles.tabBadge} ${styles.tabBadgeActive}`}>LIVE</span>
           </button>
         </nav>
 
@@ -150,10 +144,6 @@ export default function ConsoleShell() {
                 ↗
               </a>
             </div>
-          </div>
-
-          <div>
-            <span className={styles.trustLine}>Read-Only Verified Mode</span>
           </div>
         </footer>
       </main>

@@ -49,7 +49,7 @@ export const EVIDENCE_PAYMENT_A: EvidencePayment = {
   id: 'paymentA',
   name: 'Payment A',
   pathName: 'CLAIM Path',
-  pathDescription: 'Hashlock-authorized settlement through the claim path',
+  pathDescription: 'Hashlock-authorized settlement',
   paymentId: '0x19b3f6176561b6054a803a0d499c73252413eaa8756dda3990f605ef9273ac3',
   amountFormatted: '0.1 STRK',
   tokenSymbol: 'STRK',
@@ -81,7 +81,7 @@ export const EVIDENCE_PAYMENT_A: EvidencePayment = {
       detail: 'Poseidon preimage revealed and verified onchain',
     },
     {
-      label: 'Claim Window',
+      label: 'Claim window',
       value: 'Valid',
       detail: 'Claimed before expiry threshold',
     },
@@ -97,7 +97,7 @@ export const EVIDENCE_PAYMENT_B: EvidencePayment = {
   id: 'paymentB',
   name: 'Payment B',
   pathName: 'REFUND Path',
-  pathDescription: 'Post-expiry settlement through the refund path',
+  pathDescription: 'Post-expiry settlement',
   paymentId: '0x7e0d3d4225351e4436e7b5b62c28412fb2b876ab904dda8a51c0be19aeba134',
   amountFormatted: '0.1 STRK',
   tokenSymbol: 'STRK',
@@ -124,12 +124,12 @@ export const EVIDENCE_PAYMENT_B: EvidencePayment = {
   },
   conditions: [
     {
-      label: 'Refund Hash',
+      label: 'Refund hash',
       value: 'Verified',
       detail: 'Poseidon refund preimage authenticated',
     },
     {
-      label: 'Expiry Threshold',
+      label: 'Expiry',
       value: 'Reached',
       detail: 'Current block >= expiry threshold at settlement',
     },
@@ -142,9 +142,8 @@ export const EVIDENCE_PAYMENT_B: EvidencePayment = {
 };
 
 export const EVIDENCE_LIABILITY_PROOF = {
-  label: 'LOCKED STRK LIABILITY',
+  label: 'HISTORICAL LIABILITY',
   value: '0 STRK',
-  context: 'At completion of canonical A/B lifecycle',
+  context: 'After the verified A/B lifecycle · Block 13,708,549',
   block: EVIDENCE_TERMINAL_BLOCK,
-  note: 'Zero final locked liability — contract fully settled for verified lifecycle.',
 } as const;

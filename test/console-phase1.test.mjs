@@ -213,7 +213,7 @@ test("Phase 1: Console is read-only and contains no write builders or wallet exe
   }
 });
 
-test("Phase 1: VerifiedDemo supports reduced motion, degradation wording, and clean hash navigation", () => {
+test("Phase 1: VerifiedDemo supports reduced motion, degradation wording, and clean simplicity-first structure", () => {
   const demoSource = read("src/app/console/_components/VerifiedDemo.tsx");
   const shellSource = read("src/app/console/_components/ConsoleShell.tsx");
 
@@ -231,9 +231,15 @@ test("Phase 1: VerifiedDemo supports reduced motion, degradation wording, and cl
   assert.doesNotMatch(demoSource, /Historical record verified/);
 
   // Trust line copy
-  assert.match(demoSource, /No funds required to explore/);
+  assert.match(demoSource, /Real Mainnet transactions/);
+  assert.match(demoSource, /No wallet required/);
 
-  // Shell navigation
+  // Shell header and navigation
+  assert.match(shellSource, /href="\/"/);
+  assert.match(shellSource, /Mainnet/);
+  assert.doesNotMatch(shellSource, /← Protocol/);
+  assert.doesNotMatch(shellSource, /LIVE/);
+  assert.doesNotMatch(shellSource, /Read-Only Verified Mode/);
   assert.match(shellSource, /#verified-demo/);
   assert.match(shellSource, /hashchange/);
 
@@ -247,7 +253,14 @@ test("Phase 1: VerifiedDemo supports reduced motion, degradation wording, and cl
   assert.match(demoSource, /Settled into shielded STRK20 note/);
   assert.match(demoSource, /Returned into shielded STRK20 note/);
 
-  // Refined payment selector subtitles
-  assert.match(demoSource, /Hashlock-authorized settlement through the claim path/);
-  assert.match(demoSource, /Post-expiry settlement through the refund path/);
+  // Refined section headers and conditions
+  assert.match(demoSource, /MAINNET TRANSACTIONS/);
+  assert.match(demoSource, /CONDITIONS/);
+  assert.match(demoSource, /HISTORICAL LIABILITY/);
+  assert.match(demoSource, /PRIVACY BOUNDARY/);
+  assert.match(
+    demoSource,
+    /Creator, claimant and refunder addresses are not stored in ConditionalPay state\./,
+  );
+  assert.doesNotMatch(demoSource, /Privacy model/);
 });

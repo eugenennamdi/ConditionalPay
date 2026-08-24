@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { RpcProvider } from 'starknet';
-import { getPayment, PaymentState } from '@conditionalpay/sdk';
+import { getPayment } from '@conditionalpay/sdk';
 import styles from '../console.module.css';
 import {
   CONDITIONAL_PAY_CONTRACT,
@@ -34,7 +34,6 @@ export default function VerifiedDemo() {
   const [verificationStatus, setVerificationStatus] = useState<
     'idle' | 'verifying' | 'verified' | 'degraded'
   >('idle');
-  const [liveStateNumber, setLiveStateNumber] = useState<number | null>(null);
   const [historicalLiability, setHistoricalLiability] = useState<string | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -92,8 +91,7 @@ export default function VerifiedDemo() {
     setVerificationStatus('verifying');
     try {
       const provider = getFallbackProvider();
-      const res = await getPayment(provider, CONDITIONAL_PAY_CONTRACT, payment.paymentId);
-      setLiveStateNumber(res.state);
+      await getPayment(provider, CONDITIONAL_PAY_CONTRACT, payment.paymentId);
 
       try {
         const histRes = await provider.callContract(
@@ -123,9 +121,8 @@ export default function VerifiedDemo() {
     async function loadVerification() {
       try {
         const provider = getFallbackProvider();
-        const res = await getPayment(provider, CONDITIONAL_PAY_CONTRACT, payment.paymentId);
+        await getPayment(provider, CONDITIONAL_PAY_CONTRACT, payment.paymentId);
         if (!isMounted) return;
-        setLiveStateNumber(res.state);
 
         try {
           const histRes = await provider.callContract(
@@ -162,20 +159,16 @@ export default function VerifiedDemo() {
       {/* Demo Header */}
       <section className={styles.demoHero} aria-labelledby="verified-demo-title">
         <div className={styles.demoHeroContent}>
-          <p className={styles.kicker}>VERIFIED MAINNET DEMO</p>
           <h1 id="verified-demo-title" className={styles.demoTitle}>
             Two terminal paths. Proven onchain.
           </h1>
           <p className={styles.demoDescription}>
-            Replay the completed ConditionalPay CLAIM and REFUND settlement lifecycles using
-            authenticated Starknet Mainnet transactions accepted on L1.
+            Replay the completed CLAIM and REFUND paths using real Starknet Mainnet transactions.
           </p>
           <div className={styles.trustLine}>
             <span>Real Mainnet transactions</span>
             <span>·</span>
             <span>No wallet required</span>
-            <span>·</span>
-            <span>No funds required to explore</span>
           </div>
         </div>
 
@@ -188,17 +181,7 @@ export default function VerifiedDemo() {
             />
             <span>
               {verificationStatus === 'verifying' && 'Verifying onchain…'}
-              {verificationStatus === 'verified' && (
-                <>
-                  Verified onchain (
-                  {liveStateNumber === PaymentState.CLAIMED
-                    ? 'CLAIMED'
-                    : liveStateNumber === PaymentState.REFUNDED
-                    ? 'REFUNDED'
-                    : 'MATCHED'}
-                  )
-                </>
-              )}
+              {verificationStatus === 'verified' && 'Verified onchain'}
               {verificationStatus === 'degraded' &&
                 'Live verification unavailable. Showing recorded Mainnet evidence.'}
               {verificationStatus === 'idle' && 'Ready for verification'}
@@ -229,7 +212,7 @@ export default function VerifiedDemo() {
               <h3>
                 Payment A <span className={styles.pathTag}>CLAIM</span>
               </h3>
-              <p>Hashlock-authorized settlement through the claim path</p>
+              <p>{EVIDENCE_PAYMENT_A.pathDescription}</p>
             </div>
             <span className={styles.outcomePill} data-outcome="claimed">
               CLAIMED
@@ -247,7 +230,7 @@ export default function VerifiedDemo() {
               <h3>
                 Payment B <span className={styles.pathTag}>REFUND</span>
               </h3>
-              <p>Post-expiry settlement through the refund path</p>
+              <p>{EVIDENCE_PAYMENT_B.pathDescription}</p>
             </div>
             <span className={styles.outcomePill} data-outcome="refunded">
               REFUNDED
@@ -375,7 +358,7 @@ export default function VerifiedDemo() {
           <div className={styles.evidenceGrid}>
             {/* Transactions Card */}
             <div className={styles.detailCard}>
-              <p className={styles.detailCardHeader}>Authenticated Transactions</p>
+              <p className={styles.detailCardHeader}>MAINNET TRANSACTIONS</p>
               <div className={styles.txList}>
                 <a
                   href={payment.createTx.voyagerUrl}
@@ -419,7 +402,7 @@ export default function VerifiedDemo() {
 
             {/* Conditions Card */}
             <div className={styles.detailCard}>
-              <p className={styles.detailCardHeader}>Settlement Conditions Evaluation</p>
+              <p className={styles.detailCardHeader}>CONDITIONS</p>
               <div className={styles.conditionsList}>
                 {payment.conditions.map((cond) => (
                   <div className={styles.conditionRow} key={cond.label}>
@@ -439,39 +422,23 @@ export default function VerifiedDemo() {
       <section className={styles.bottomProofGrid} aria-label="Protocol proofs and privacy boundary">
         {/* Historical Liability Proof */}
         <div className={styles.proofCard}>
-          <p className={styles.proofCardTitle}>{EVIDENCE_LIABILITY_PROOF.label}</p>
+          <p className={styles.proofCardTitle}>HISTORICAL LIABILITY</p>
           <div className={styles.liabilityHighlight}>
             <span className={styles.liabilityValue}>
               {historicalLiability !== null ? `${historicalLiability} STRK` : EVIDENCE_LIABILITY_PROOF.value}
             </span>
             <span className={styles.liabilityMeta}>
-              at block {EVIDENCE_TERMINAL_BLOCK} (historical onchain read)
+              After the verified A/B lifecycle · Block {EVIDENCE_TERMINAL_BLOCK.toLocaleString()}
             </span>
           </div>
-          <p className={styles.liabilityNote}>{EVIDENCE_LIABILITY_PROOF.note}</p>
         </div>
 
         {/* Privacy Boundary Overview */}
         <div className={styles.proofCard}>
           <p className={styles.proofCardTitle}>PRIVACY BOUNDARY</p>
-          <div className={styles.privacyTable}>
-            <div className={styles.privacyColumn}>
-              <h4>Not Stored in Contract</h4>
-              <ul className={styles.privacyList}>
-                <li>Creator address <span className={styles.notStoredTag}>✓ NOT STORED</span></li>
-                <li>Claimant address <span className={styles.notStoredTag}>✓ NOT STORED</span></li>
-                <li>Refunder address <span className={styles.notStoredTag}>✓ NOT STORED</span></li>
-              </ul>
-            </div>
-            <div className={styles.privacyColumn}>
-              <h4>Public at Boundary</h4>
-              <ul className={styles.privacyList}>
-                <li>Token + amount <span className={styles.publicTag}>PUBLIC</span></li>
-                <li>Timing + conditions <span className={styles.publicTag}>PUBLIC</span></li>
-                <li>Revealed preimages <span className={styles.publicTag}>PUBLIC</span></li>
-              </ul>
-            </div>
-          </div>
+          <p className={styles.privacyStatement}>
+            Creator, claimant and refunder addresses are not stored in ConditionalPay state.
+          </p>
         </div>
       </section>
     </div>

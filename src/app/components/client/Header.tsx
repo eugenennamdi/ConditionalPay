@@ -2,19 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import styles from '../../uni.module.css';
-
-interface NavigationProps {
-  repositoryUrl: string;
-}
-
-function ExternalLinkIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4 12 12 4M6 4h6v6" />
-    </svg>
-  );
-}
 
 const NAV_ITEMS = [
   { href: '#evidence', label: 'Mainnet Proof', id: 'evidence' },
@@ -22,7 +11,7 @@ const NAV_ITEMS = [
   { href: '#developers', label: 'SDK', id: 'developers' },
 ] as const;
 
-export default function Navigation({ repositoryUrl }: NavigationProps) {
+export default function Navigation() {
   const [activeId, setActiveId] = useState<string>('');
 
   useEffect(() => {
@@ -79,10 +68,11 @@ export default function Navigation({ repositoryUrl }: NavigationProps) {
           ))}
         </div>
 
-        <a className={styles.navCta} href={repositoryUrl} target="_blank" rel="noreferrer">
-          GitHub
-          <ExternalLinkIcon />
-        </a>
+        <div className={styles.navActions}>
+          <Link href="/console" className={styles.headerConsoleCta}>
+            Launch Console
+          </Link>
+        </div>
       </nav>
     </header>
   );
