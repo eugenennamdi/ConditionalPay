@@ -1338,3 +1338,736 @@
     white-space: normal;
   }
 }
+
+/* ==========================================================================
+   Phase 4: CREATE + Credential Handoff Styles
+   ========================================================================== */
+
+.createWorkflowWrapper {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto 3rem;
+  box-sizing: border-box;
+}
+
+.createFormContainer {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 20px rgba(16, 35, 29, 0.04);
+  box-sizing: border-box;
+}
+
+.formHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.formTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  margin: 0;
+}
+
+.formTokenBadge {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(50, 107, 83, 0.1);
+  color: var(--green);
+  padding: 0.25rem 0.625rem;
+  border-radius: 4px;
+}
+
+.formAlert {
+  background: rgba(184, 75, 41, 0.08);
+  border: 1px solid rgba(184, 75, 41, 0.25);
+  color: #b84b29;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  margin-bottom: 1.25rem;
+}
+
+.formFieldGroup {
+  margin-bottom: 1.25rem;
+}
+
+.formLabel {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 0.375rem;
+}
+
+.amountInputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.amountInput {
+  width: 100%;
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 3.5rem 0.75rem 1rem;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.amountInput:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(50, 107, 83, 0.15);
+}
+
+.amountSuffix {
+  position: absolute;
+  right: 1rem;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.selectWrapper {
+  position: relative;
+}
+
+.formSelect {
+  width: 100%;
+  appearance: none;
+  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236d746f' d='M6 8L0 0h12z'/%3E%3C/svg%3E") no-repeat right 1rem center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 2.5rem 0.75rem 1rem;
+  font-size: 0.9375rem;
+  color: var(--ink);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.formSelect:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(50, 107, 83, 0.15);
+}
+
+.customDateWrapper {
+  margin-top: 0.5rem;
+}
+
+.customDateInput {
+  width: 100%;
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.625rem 1rem;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.875rem;
+  color: var(--ink);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.customDateInput:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(50, 107, 83, 0.15);
+}
+
+.formActionRow {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submitBtn {
+  appearance: none;
+  background: var(--ink);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.8125rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.submitBtn:hover:not(:disabled) {
+  background: #1e332a;
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Create Preview Card
+   ========================================================================== */
+
+.previewContainer {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 20px rgba(16, 35, 29, 0.04);
+  box-sizing: border-box;
+}
+
+.previewHeader {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.previewTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  margin: 0;
+}
+
+.previewAlert {
+  background: rgba(184, 75, 41, 0.08);
+  border: 1px solid rgba(184, 75, 41, 0.25);
+  color: #b84b29;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  margin-bottom: 1.25rem;
+}
+
+.previewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.previewItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+}
+
+.previewLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.previewValue {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.previewValueBold {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.previewActionsSection {
+  background: #f8faf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.previewSectionHeader {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.actionStepsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.actionStepItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+}
+
+.actionStepNum {
+  font-weight: 700;
+  color: var(--green);
+  opacity: 0.8;
+}
+
+.actionStepName {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.actionStepDesc {
+  color: var(--ink-soft);
+}
+
+.previewNetworkRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.625rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1rem;
+}
+
+.previewNetworkLabel {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.previewNetworkValue {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.previewNotice {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0 0 1.5rem 0;
+}
+
+.previewButtonRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.primaryBtn {
+  appearance: none;
+  background: var(--ink);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.8125rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  background: #1e332a;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryBtn {
+  appearance: none;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.8125rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.secondaryBtn:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.secondaryBtnSmall {
+  appearance: none;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.secondaryBtnSmall:hover:not(:disabled) {
+  background: #ffffff;
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   Credential Handoff & Status Surface
+   ========================================================================== */
+
+.handoffContainer {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 20px rgba(16, 35, 29, 0.04);
+  box-sizing: border-box;
+}
+
+.handoffHeader {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.handoffTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.handoffTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  margin: 0;
+}
+
+.handoffSubtitle {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.statusActiveBadge {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(50, 107, 83, 0.12);
+  color: var(--green);
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  letter-spacing: 0.05em;
+}
+
+.statusPendingBadge {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(201, 138, 44, 0.12);
+  color: #c98a2c;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  letter-spacing: 0.05em;
+}
+
+.recheckRow {
+  margin-top: 0.75rem;
+}
+
+.identifiersCard {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.identifierItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.identifierLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.identifierCode {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+
+.identifierValue {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.txLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+  color: var(--green);
+  text-decoration: none;
+}
+
+.txLink:hover {
+  text-decoration: underline;
+}
+
+.recoveryCard {
+  background: #fdfefe;
+  border: 1px solid rgba(50, 107, 83, 0.25);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.recoveryHeader {
+  margin-bottom: 1.25rem;
+}
+
+.recoveryTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  margin: 0 0 0.375rem 0;
+}
+
+.recoveryDesc {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.recoveryAlert {
+  background: rgba(184, 75, 41, 0.08);
+  border: 1px solid rgba(184, 75, 41, 0.25);
+  color: #b84b29;
+  padding: 0.625rem 0.875rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin-bottom: 1rem;
+}
+
+.passphraseGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.passphraseField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.passphraseInput {
+  width: 100%;
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  color: var(--ink);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.passphraseInput:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px rgba(50, 107, 83, 0.15);
+}
+
+.downloadActionRow {
+  margin-bottom: 1rem;
+}
+
+.confirmationRow {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkboxInput {
+  accent-color: var(--green);
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+.handoffFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.revertedContainer {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 20px rgba(16, 35, 29, 0.04);
+}
+
+.revertedHeader {
+  margin-bottom: 1.5rem;
+}
+
+.revertedTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #b84b29;
+  margin: 0 0 0.5rem 0;
+}
+
+.revertedDesc {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* ==========================================================================
+   Navigation Guard Modal
+   ========================================================================== */
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modalCard {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.75rem;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modalTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 0.75rem 0;
+}
+
+.modalMessage {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0 0 1.5rem 0;
+}
+
+.modalActionRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+@media (max-width: 740px) {
+  .previewGrid {
+    grid-template-columns: 1fr;
+  }
+  .identifiersCard {
+    grid-template-columns: 1fr;
+  }
+  .passphraseGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .createFormContainer,
+  .previewContainer,
+  .handoffContainer {
+    padding: 1.25rem 1rem;
+  }
+  .formTitle,
+  .previewTitle,
+  .handoffTitle {
+    font-size: 1rem;
+  }
+  .amountInput {
+    font-size: 1rem;
+  }
+  .previewButtonRow {
+    flex-direction: column-reverse;
+    gap: 0.75rem;
+  }
+  .primaryBtn,
+  .secondaryBtn,
+  .submitBtn {
+    width: 100%;
+    text-align: center;
+  }
+}

@@ -201,7 +201,15 @@ test("Phase 1: Console is read-only and contains no write builders or wallet exe
     "sessionStorage",
   ];
 
-  for (const { path, source } of readConsoleSources()) {
+  const phase1Sources = readConsoleSources().filter(
+    ({ path }) =>
+      path.includes("VerifiedDemo") ||
+      path.includes("verifiedDemoEvidence") ||
+      path.endsWith("console/page.tsx") ||
+      path.endsWith("console/layout.tsx"),
+  );
+
+  for (const { path, source } of phase1Sources) {
     for (const forbidden of forbiddenWriteMethods) {
       assert.equal(
         source.includes(forbidden),

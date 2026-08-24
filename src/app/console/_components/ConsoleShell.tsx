@@ -6,6 +6,9 @@ import Image from 'next/image';
 import styles from '../console.module.css';
 import VerifiedDemo from './VerifiedDemo';
 import WalletConnect from './WalletConnect';
+import CreatePayment from './CreatePayment';
+import UnsavedModal from './UnsavedModal';
+import { ConsoleWalletProvider } from '../_lib/ConsoleWalletContext';
 import {
   CONDITIONAL_PAY_CONTRACT,
   STRK20_POOL_CONTRACT,
@@ -18,8 +21,11 @@ function formatAddress(addr: string): string {
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
 
-export default function ConsoleShell() {
-  const [activeMode, setActiveMode] = useState<ConsoleMode>('verifiedDemo');
+function ConsoleInner() {
+  const [activeMode, setActiveMode] = useState<ConsoleMode>('create');
+  const [hasUnsaved, setHasUnsaved] = useState<boolean>(false);
+  const [pendingMode, setPendingMode] = useState<ConsoleMode | null>(null);
+  const [isUnsavedModalOpen, setIsUnsavedModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     function syncHash() {
@@ -27,6 +33,8 @@ export default function ConsoleShell() {
         const hash = window.location.hash.toLowerCase();
         if (hash === '#verified-demo' || hash === '#demo') {
           setActiveMode('verifiedDemo');
+        } else if (hash === '#create') {
+          setActiveMode('create');
         }
       }
     }
@@ -36,12 +44,45 @@ export default function ConsoleShell() {
     return () => window.removeEventListener('hashchange', syncHash);
   }, []);
 
+  function handleModeClick(targetMode: ConsoleMode) {
+    if (targetMode === activeMode) return;
+    if (hasUnsaved) {
+      setPendingMode(targetMode);
+      setIsUnsavedModalOpen(true);
+    } else {
+      setActiveMode(targetMode);
+    }
+  }
+
+  function handleStay() {
+    setIsUnsavedModalOpen(false);
+    setPendingMode(null);
+  }
+
+  function handleLeaveAnyway() {
+    setIsUnsavedModalOpen(false);
+    if (pendingMode) {
+      setActiveMode(pendingMode);
+      setPendingMode(null);
+    }
+  }
+
   return (
     <div className={styles.consolePage}>
       {/* Top Header */}
       <header className={styles.consoleHeaderSticky}>
         <div className={styles.consoleNav}>
-          <Link href="/" className={styles.brandLockup} title="Return to ConditionalPay homepage">
+          <Link
+            href="/"
+            className={styles.brandLockup}
+            title="Return to ConditionalPay homepage"
+            onClick={(e) => {
+              if (hasUnsaved) {
+                e.preventDefault();
+                setIsUnsavedModalOpen(true);
+              }
+            }}
+          >
             <Image
               src="/conditionalpay-mark.png"
               alt="ConditionalPay"
@@ -76,8 +117,7 @@ export default function ConsoleShell() {
             aria-selected={activeMode === 'create'}
             className={styles.modeTab}
             data-active={activeMode === 'create'}
-            disabled
-            title="Create flow unavailable in read-only mode"
+            onClick={() => handleModeClick('create')}
           >
             <span>Create</span>
           </button>
@@ -109,13 +149,14 @@ export default function ConsoleShell() {
             aria-selected={activeMode === 'verifiedDemo'}
             className={styles.modeTab}
             data-active={activeMode === 'verifiedDemo'}
-            onClick={() => setActiveMode('verifiedDemo')}
+            onClick={() => handleModeClick('verifiedDemo')}
           >
             <span>Verified Demo</span>
           </button>
         </nav>
 
         {/* Active Workspace */}
+        {activeMode === 'create' && <CreatePayment onUnsavedChange={setHasUnsaved} />}
         {activeMode === 'verifiedDemo' && <VerifiedDemo />}
 
         {/* Infrastructure Contract Bar */}
@@ -128,9 +169,11 @@ export default function ConsoleShell() {
                 href={`https://voyager.online/contract/${CONDITIONAL_PAY_CONTRACT}`}
                 target="_blank"
                 rel="noreferrer"
-                title={`View ConditionalPay contract on Voyager: ${CONDITIONAL_PAY_CONTRACT}`}
+                className={styles.explorerLink}
+                title="View ConditionalPay contract on Voyager"
               >
-                ↗
+                <span>Voyager</span>
+                <span aria-hidden="true">↗</span>
               </a>
             </div>
 
@@ -141,14 +184,31 @@ export default function ConsoleShell() {
                 href={`https://voyager.online/contract/${STRK20_POOL_CONTRACT}`}
                 target="_blank"
                 rel="noreferrer"
-                title={`View STRK20 Privacy Pool on Voyager: ${STRK20_POOL_CONTRACT}`}
+                className={styles.explorerLink}
+                title="View STRK20 pool contract on Voyager"
               >
-                ↗
+                <span>Voyager</span>
+                <span aria-hidden="true">↗</span>
               </a>
             </div>
           </div>
         </footer>
       </main>
+
+      {/* In-app navigation guard modal */}
+      <UnsavedModal
+        isOpen={isUnsavedModalOpen}
+        onStay={handleStay}
+        onLeaveAnyway={handleLeaveAnyway}
+      />
     </div>
+  );
+}
+
+export default function ConsoleShell() {
+  return (
+    <ConsoleWalletProvider>
+      <ConsoleInner />
+    </ConsoleWalletProvider>
   );
 }

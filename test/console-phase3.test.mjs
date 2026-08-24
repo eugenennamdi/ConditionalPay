@@ -78,7 +78,10 @@ test("Phase 3: Root route remains strictly isolated from wallet code", () => {
 });
 
 test("Phase 3: Ready Wallet is the only targeted wallet; no other wallets advertised", () => {
-  const connectSource = read("src/app/console/_components/WalletConnect.tsx");
+  const connectSource =
+    read("src/app/console/_components/WalletConnect.tsx") +
+    "\n" +
+    read("src/app/console/_lib/ConsoleWalletContext.tsx");
 
   assert.match(connectSource, /Ready Wallet/);
   assert.match(connectSource, /isReadyWallet/);
@@ -91,7 +94,10 @@ test("Phase 3: Ready Wallet is the only targeted wallet; no other wallets advert
 });
 
 test("Phase 3: Wallet connection requires explicit user action and executes no automatic requests on mount", () => {
-  const connectSource = read("src/app/console/_components/WalletConnect.tsx");
+  const connectSource =
+    read("src/app/console/_components/WalletConnect.tsx") +
+    "\n" +
+    read("src/app/console/_lib/ConsoleWalletContext.tsx");
 
   // Mount effect only subscribes to discovery store
   assert.match(connectSource, /store\.subscribe/);
@@ -118,7 +124,13 @@ test("Phase 3: Zero transaction execution, signing, or write builders present in
     "exportSinglePaymentCredentials",
   ];
 
-  for (const { path, source } of readConsoleSources()) {
+  const phase3Sources = readConsoleSources().filter(
+    ({ path }) =>
+      path.includes("WalletConnect") ||
+      path.includes("ConsoleWalletContext"),
+  );
+
+  for (const { path, source } of phase3Sources) {
     for (const forbidden of forbiddenExecutionKeywords) {
       assert.equal(
         source.includes(forbidden),
@@ -145,7 +157,10 @@ test("Phase 3: No browser persistence (localStorage / sessionStorage) in Console
 });
 
 test("Phase 3: Mainnet chain verification exists and enforces Starknet Mainnet", () => {
-  const connectSource = read("src/app/console/_components/WalletConnect.tsx");
+  const connectSource =
+    read("src/app/console/_components/WalletConnect.tsx") +
+    "\n" +
+    read("src/app/console/_lib/ConsoleWalletContext.tsx");
 
   assert.match(connectSource, /SNconstants\.StarknetChainId\.SN_MAIN/);
   assert.match(connectSource, /0x534e5f4d41494e/);
@@ -157,7 +172,10 @@ test("Phase 3: Mainnet chain verification exists and enforces Starknet Mainnet",
 });
 
 test("Phase 3: Wallet capability and privacy registration remain distinct states", () => {
-  const connectSource = read("src/app/console/_components/WalletConnect.tsx");
+  const connectSource =
+    read("src/app/console/_components/WalletConnect.tsx") +
+    "\n" +
+    read("src/app/console/_lib/ConsoleWalletContext.tsx");
 
   // Distinct types and states
   assert.match(connectSource, /export type WalletCapability = 'UNKNOWN' | 'SUPPORTED' | 'UNSUPPORTED'/);
@@ -168,7 +186,10 @@ test("Phase 3: Wallet capability and privacy registration remain distinct states
 });
 
 test("Phase 3: 10-block maturity constant and message remain exact", () => {
-  const connectSource = read("src/app/console/_components/WalletConnect.tsx");
+  const connectSource =
+    read("src/app/console/_components/WalletConnect.tsx") +
+    "\n" +
+    read("src/app/console/_lib/ConsoleWalletContext.tsx");
 
   assert.match(connectSource, /export const REQUIRED_NOTE_CONFIRMATIONS = 10;/);
   assert.match(connectSource, /export const NOTE_MATURITY_MESSAGE = 'Requires 10 block confirmations\.';/);
