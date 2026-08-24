@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import styles from '../console.module.css';
 import VerifiedDemo from './VerifiedDemo';
+import WalletConnect from './WalletConnect';
 import {
   CONDITIONAL_PAY_CONTRACT,
   STRK20_POOL_CONTRACT,
@@ -61,6 +62,7 @@ export default function ConsoleShell() {
               <span className={styles.networkDot} aria-hidden="true" />
               <span>Mainnet</span>
             </div>
+            <WalletConnect />
           </div>
         </div>
       </header>

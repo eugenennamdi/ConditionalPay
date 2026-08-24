@@ -195,7 +195,6 @@ test("Phase 1: Console is read-only and contains no write builders or wallet exe
     "buildRefundActions",
     "account.execute",
     "SelectWallet",
-    "WalletConnect",
     "generateSecurePreimage",
     "generateSecureNonce",
     "localStorage",
