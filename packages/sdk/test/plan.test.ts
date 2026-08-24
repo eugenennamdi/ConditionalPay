@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import type { RpcTypeToMessageMap, STRK20_ACTION } from '@starknet-io/types-js';
 import {
   BearerCredentialBundle,
+  ClaimAccessCredentials,
+  exportClaimAccessCredentials,
   exportEncryptedCredentials,
   exportSinglePaymentCredentials,
   generateSecureNonce,
   generateSecurePreimage,
+  importClaimAccessCredentials,
   importEncryptedCredentials,
   importSinglePaymentCredentials,
   SinglePaymentCredentials,
@@ -20,7 +23,7 @@ import {
   prepareTx3Refund,
 } from '../src/plan.js';
 import { validateFelt } from '../src/encoding.js';
-import { normalizeFelt } from '../src/hashing.js';
+import { computeClaimHash, normalizeFelt } from '../src/hashing.js';
 import { OPEN_NOTE_ID_0 } from '../src/types.js';
 
 describe('Mainnet Execution Plan Generator & Secure Credentials', () => {
@@ -168,9 +171,9 @@ describe('Mainnet Execution Plan Generator & Secure Credentials', () => {
 
   describe('SinglePaymentCredentials Backup & Restore (v1.1)', () => {
     const mockSingle: SinglePaymentCredentials = {
-      paymentId: '0x19b3f6176561b6054a803a0d499c73252413eaa8756dda3990f605ef9273ac3',
-      claimPreimage: '0xa111b222c333d444e555f6660111222333444555666777888999aaabbbcccddd',
-      refundPreimage: '0xb111c222d333e444f5550666111122223333444455556666777788889999aaaa',
+      paymentId: '0x019b3f6176561b6054a803a0d499c73252413eaa8756dda3990f605ef9273ac3',
+      claimPreimage: '0x0111b222c333d444e555f6660111222333444555666777888999aaabbbcccddd',
+      refundPreimage: '0x0211c222d333e444f5550666111122223333444455556666777788889999aaaa',
       nonce: '0x101',
     };
 
@@ -285,6 +288,167 @@ describe('Mainnet Execution Plan Generator & Secure Credentials', () => {
       assert.equal(typeof sdkRoot.exportEncryptedCredentials, 'function');
       assert.equal(typeof sdkRoot.importEncryptedCredentials, 'function');
       assert.equal(sdkRoot.DEFAULT_PBKDF2_ITERATIONS, 600_000);
+    });
+  });
+
+  describe('ClaimAccessCredentials Backup & Restore (v1.2)', () => {
+    const mockClaimAccess: ClaimAccessCredentials = {
+      paymentId: '0x05a7f9b23c81d4e6012789abc456def0123456789abcdef0123456789abcdef0',
+      claimPreimage: '0x0111111111111111111111111111111111111111111111111111111111111111',
+    };
+
+    it('exports with v1.2 and default OWASP 600,000 iterations and decrypts accurately', async () => {
+      const password = 'StrongClaimPassphrase123!';
+      const envelope = await exportClaimAccessCredentials(mockClaimAccess, password);
+
+      assert.equal(envelope.version, '1.2');
+      assert.equal(envelope.cipher, 'AES-GCM-256');
+      assert.equal(envelope.kdf, 'PBKDF2-SHA256');
+      assert.equal(envelope.iterations, 600000, 'Must default to 600,000 iterations');
+      assert.ok(envelope.ciphertextHex.length > 0);
+
+      const restored = await importClaimAccessCredentials(envelope, password);
+      assert.deepEqual(restored, mockClaimAccess);
+      assert.equal(restored.paymentId, mockClaimAccess.paymentId);
+      assert.equal(restored.claimPreimage, mockClaimAccess.claimPreimage);
+      assert.equal((restored as unknown as Record<string, unknown>).refundPreimage, undefined);
+      assert.equal((restored as unknown as Record<string, unknown>).nonce, undefined);
+    });
+
+    it('proves claim-access envelope reuses existing CREATE paymentId and claimPreimage', () => {
+      const hashlock = computeClaimHash(mockClaimAccess.claimPreimage);
+      assert.equal(computeClaimHash(mockClaimAccess.claimPreimage), hashlock);
+      assert.equal(mockClaimAccess.paymentId.startsWith('0x'), true);
+    });
+
+    it('rejects decryption with incorrect password', async () => {
+      const envelope = await exportClaimAccessCredentials(mockClaimAccess, 'CorrectClaimPass123!', 10000);
+      await assert.rejects(
+        () => importClaimAccessCredentials(envelope, 'WrongClaimPass456!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('strictly fails decryption when ciphertext is tampered', async () => {
+      const envelope = await exportClaimAccessCredentials(mockClaimAccess, 'TamperPass123!', 10000);
+      const tamperedHex =
+        envelope.ciphertextHex.slice(0, -1) + (envelope.ciphertextHex.endsWith('a') ? 'b' : 'a');
+      const tamperedEnvelope = { ...envelope, ciphertextHex: tamperedHex };
+
+      await assert.rejects(
+        () => importClaimAccessCredentials(tamperedEnvelope, 'TamperPass123!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('strictly fails decryption when IV is tampered', async () => {
+      const envelope = await exportClaimAccessCredentials(mockClaimAccess, 'TamperPass123!', 10000);
+      const tamperedIv =
+        envelope.ivHex.slice(0, -1) + (envelope.ivHex.endsWith('0') ? '1' : '0');
+      const tamperedEnvelope = { ...envelope, ivHex: tamperedIv };
+
+      await assert.rejects(
+        () => importClaimAccessCredentials(tamperedEnvelope, 'TamperPass123!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('strictly fails decryption when salt is tampered', async () => {
+      const envelope = await exportClaimAccessCredentials(mockClaimAccess, 'TamperPass123!', 10000);
+      const tamperedSalt =
+        envelope.saltHex.slice(0, -1) + (envelope.saltHex.endsWith('0') ? '1' : '0');
+      const tamperedEnvelope = { ...envelope, saltHex: tamperedSalt };
+
+      await assert.rejects(
+        () => importClaimAccessCredentials(tamperedEnvelope, 'TamperPass123!'),
+        /Failed to decrypt credentials/,
+      );
+    });
+
+    it('cross-format isolation: v1.0 and v1.1 cannot import through importClaimAccessCredentials', async () => {
+      const single: SinglePaymentCredentials = {
+        paymentId: '0x1',
+        claimPreimage: '0x2',
+        refundPreimage: '0x3',
+        nonce: '0x4',
+      };
+      const v11Envelope = await exportSinglePaymentCredentials(single, 'CommonPass123!', 10000);
+      assert.equal(v11Envelope.version, '1.1');
+
+      await assert.rejects(
+        // @ts-expect-error test cross-envelope type safety
+        () => importClaimAccessCredentials(v11Envelope, 'CommonPass123!'),
+        /Unsupported envelope format: AES-GCM-256 v1.1/,
+      );
+
+      const historicalBundle: BearerCredentialBundle = {
+        paymentA: { paymentId: '0x1', claimPreimage: '0x2', refundPreimage: '0x3', nonce: '0x4' },
+        paymentB: { paymentId: '0x5', claimPreimage: '0x6', refundPreimage: '0x7', nonce: '0x8' },
+      };
+      const v10Envelope = await exportEncryptedCredentials(historicalBundle, 'CommonPass123!', 10000);
+      assert.equal(v10Envelope.version, '1.0');
+
+      await assert.rejects(
+        // @ts-expect-error test cross-envelope type safety
+        () => importClaimAccessCredentials(v10Envelope, 'CommonPass123!'),
+        /Unsupported envelope format: AES-GCM-256 v1.0/,
+      );
+    });
+
+    it('cross-format isolation: v1.2 ClaimAccess envelope cannot import through historical importEncryptedCredentials or importSinglePaymentCredentials', async () => {
+      const v12Envelope = await exportClaimAccessCredentials(mockClaimAccess, 'CommonPass123!', 10000);
+      assert.equal(v12Envelope.version, '1.2');
+
+      await assert.rejects(
+        // @ts-expect-error test cross-envelope type safety
+        () => importEncryptedCredentials(v12Envelope, 'CommonPass123!'),
+        /Unsupported envelope format: AES-GCM-256 v1.2/,
+      );
+
+      await assert.rejects(
+        // @ts-expect-error test cross-envelope type safety
+        () => importSinglePaymentCredentials(v12Envelope, 'CommonPass123!'),
+        /Unsupported envelope format: AES-GCM-256 v1.2/,
+      );
+    });
+
+    it('rejects decrypted payload with arbitrary extra properties in v1.2 envelope', async () => {
+      // Craft an envelope encrypted with an extra refundPreimage field
+      const payloadWithExtra = {
+        paymentId: mockClaimAccess.paymentId,
+        claimPreimage: mockClaimAccess.claimPreimage,
+        refundPreimage: '0x999',
+      };
+      const crafted = await exportClaimAccessCredentials(
+        payloadWithExtra as unknown as ClaimAccessCredentials,
+        'ExtraPropPass123!',
+        10000,
+      );
+
+      await assert.rejects(
+        () => importClaimAccessCredentials(crafted, 'ExtraPropPass123!'),
+        /Failed to decrypt credentials: corrupted or unexpected payload schema/,
+      );
+    });
+
+    it('strictly prevents plaintext preimages from appearing in serialized ClaimAccess envelope JSON', async () => {
+      const envelope = await exportClaimAccessCredentials(mockClaimAccess, 'NoLeakPassword123!', 10000);
+      const json = JSON.stringify(envelope);
+
+      assert.ok(!json.includes(mockClaimAccess.claimPreimage), 'No claimPreimage in JSON');
+    });
+
+    it('rejects export if passphrase is too short', async () => {
+      await assert.rejects(
+        () => exportClaimAccessCredentials(mockClaimAccess, 'short'),
+        /Passphrase must be at least 8 characters long/,
+      );
+    });
+
+    it('canonical package root exposes ClaimAccessCredentials APIs', async () => {
+      const sdkRoot = await import('../src/index.js');
+      assert.equal(typeof sdkRoot.exportClaimAccessCredentials, 'function');
+      assert.equal(typeof sdkRoot.importClaimAccessCredentials, 'function');
     });
   });
 

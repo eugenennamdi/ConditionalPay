@@ -1,4 +1,5 @@
 import { normalizeFelt } from './hashing.js';
+import { validateFelt } from './encoding.js';
 
 /**
  * Standard PBKDF2 iteration count recommended by OWASP for PBKDF2-HMAC-SHA256 password derivation.
@@ -105,10 +106,33 @@ export interface EncryptedCredentialEnvelope {
 }
 
 /**
+ * Bearer credentials for claiming a single ConditionalPay payment.
+ * Contains only the payment ID and claim secret.
+ * Strictly excludes refund secrets, nonces, and creator recovery credentials.
+ */
+export interface ClaimAccessCredentials {
+  paymentId: string;
+  claimPreimage: string;
+}
+
+/**
  * User-controlled password-encrypted envelope for safe single-payment credential backup & recovery (v1.1).
  */
 export interface SinglePaymentEncryptedEnvelope {
   version: '1.1';
+  cipher: 'AES-GCM-256';
+  kdf: 'PBKDF2-SHA256';
+  iterations: number;
+  saltHex: string; // 16 bytes
+  ivHex: string; // 12 bytes
+  ciphertextHex: string;
+}
+
+/**
+ * User-controlled password-encrypted envelope for claimant capability handoff (v1.2).
+ */
+export interface ClaimAccessEncryptedEnvelope {
+  version: '1.2';
   cipher: 'AES-GCM-256';
   kdf: 'PBKDF2-SHA256';
   iterations: number;
@@ -138,8 +162,18 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+function isValidFeltString(val: unknown): boolean {
+  if (typeof val !== 'string') return false;
+  try {
+    validateFelt(val, 'felt');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isBearerCredentialBundle(data: unknown): data is BearerCredentialBundle {
-  if (!data || typeof data !== 'object') return false;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
   const d = data as Record<string, unknown>;
   return Boolean(
     d.paymentA &&
@@ -150,17 +184,36 @@ function isBearerCredentialBundle(data: unknown): data is BearerCredentialBundle
 }
 
 function isSinglePaymentCredentials(data: unknown): data is SinglePaymentCredentials {
-  if (!data || typeof data !== 'object') return false;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
   const d = data as Record<string, unknown>;
+  const keys = Object.keys(d);
+  if (keys.length !== 4) return false;
+  if (
+    !keys.includes('paymentId') ||
+    !keys.includes('claimPreimage') ||
+    !keys.includes('refundPreimage') ||
+    !keys.includes('nonce')
+  ) {
+    return false;
+  }
   return (
-    typeof d.paymentId === 'string' &&
-    typeof d.claimPreimage === 'string' &&
-    typeof d.refundPreimage === 'string' &&
-    typeof d.nonce === 'string'
+    isValidFeltString(d.paymentId) &&
+    isValidFeltString(d.claimPreimage) &&
+    isValidFeltString(d.refundPreimage) &&
+    isValidFeltString(d.nonce)
   );
 }
 
-async function encryptEnvelopePayload<V extends '1.0' | '1.1'>(
+function isClaimAccessCredentials(data: unknown): data is ClaimAccessCredentials {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const d = data as Record<string, unknown>;
+  const keys = Object.keys(d);
+  if (keys.length !== 2) return false;
+  if (!keys.includes('paymentId') || !keys.includes('claimPreimage')) return false;
+  return isValidFeltString(d.paymentId) && isValidFeltString(d.claimPreimage);
+}
+
+async function encryptEnvelopePayload<V extends '1.0' | '1.1' | '1.2'>(
   payload: unknown,
   version: V,
   passphrase: string,
@@ -237,7 +290,7 @@ async function decryptEnvelopePayload<T>(
     ivHex: string;
     ciphertextHex: string;
   },
-  expectedVersion: '1.0' | '1.1',
+  expectedVersion: '1.0' | '1.1' | '1.2',
   passphrase: string,
   validator: (data: unknown) => data is T,
 ): Promise<T> {
@@ -353,4 +406,34 @@ export async function importSinglePaymentCredentials(
   passphrase: string,
 ): Promise<SinglePaymentCredentials> {
   return decryptEnvelopePayload(envelope, '1.1', passphrase, isSinglePaymentCredentials);
+}
+
+/**
+ * Exports claim access credentials to a password-encrypted envelope (v1.2 AES-GCM-256 + PBKDF2-SHA256).
+ *
+ * @param credentials Claim access credentials containing only paymentId and claimPreimage.
+ * @param passphrase User passphrase used to derive the 256-bit AES-GCM encryption key.
+ * @param iterations Optional iteration count (defaults to OWASP-recommended 600,000).
+ * @returns Encrypted envelope safe for claimant capability handoff.
+ */
+export async function exportClaimAccessCredentials(
+  credentials: ClaimAccessCredentials,
+  passphrase: string,
+  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+): Promise<ClaimAccessEncryptedEnvelope> {
+  return encryptEnvelopePayload(credentials, '1.2', passphrase, iterations);
+}
+
+/**
+ * Imports and restores claim access credentials from a password-encrypted envelope (v1.2).
+ *
+ * @param envelope The encrypted envelope to decrypt.
+ * @param passphrase User passphrase used during export.
+ * @returns Restored ClaimAccessCredentials.
+ */
+export async function importClaimAccessCredentials(
+  envelope: ClaimAccessEncryptedEnvelope,
+  passphrase: string,
+): Promise<ClaimAccessCredentials> {
+  return decryptEnvelopePayload(envelope, '1.2', passphrase, isClaimAccessCredentials);
 }

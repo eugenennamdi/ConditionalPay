@@ -1765,6 +1765,7 @@
 .handoffTitleRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
 }
@@ -1813,7 +1814,7 @@
 
 .identifiersCard {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
   background: #ffffff;
   border: 1px solid var(--line);
@@ -1826,6 +1827,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .identifierLabel {
@@ -1840,6 +1842,9 @@
   font-family: var(--font-mono-ui), 'Space Mono', monospace;
   font-size: 0.8125rem;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .identifierValue {
@@ -1903,7 +1908,7 @@
 
 .passphraseGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1.25rem;
 }
@@ -1912,6 +1917,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .passphraseInput {
@@ -2034,27 +2040,381 @@
   gap: 0.75rem;
 }
 
+/* ==========================================================================
+   Settlement Flow Components (Claim & Refund)
+   ========================================================================== */
+
+.settlementContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.settlementCard {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.settlementHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+}
+
+.settlementTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.settlementSubtitle {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settlementPreviewContainer,
+.settlementResultContainer {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.fileInputRow {
+  position: relative;
+}
+
+.fileInput {
+  position: absolute;
+  opacity: 0;
+  width: 0.1px;
+  height: 0.1px;
+}
+
+.fileChooseBtn {
+  display: inline-block;
+  padding: 0.75rem 1rem;
+  background: var(--paper-warm, #fcfbf9);
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: var(--ink);
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.fileChooseBtn:hover {
+  border-color: var(--ink);
+  background: var(--paper);
+}
+
+.sectionBadgeRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.creatorBadge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: #f4eee5;
+  color: #7a5e38;
+}
+
+.claimantBadge,
+.recipientBadge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: #e6f4ea;
+  color: #1e7e34;
+}
+
+.statusActiveText {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.deriveForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.successCard {
+  background: #f0fdf4;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.successMessage {
+  font-size: 0.875rem;
+  color: #166534;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.recoverySubDesc {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin: 0.25rem 0 0 0;
+  line-height: 1.4;
+}
+
+.secondaryFileHint {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin: 0.375rem 0 0 0;
+  line-height: 1.4;
+}
+
+.handoffHint {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  margin: 0.5rem 0 0 0;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.actionsCard {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.actionsCardHeader {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ink);
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.actionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.actionStepNum {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--green);
+  line-height: 1.4;
+  min-width: 1.5rem;
+}
+
+.actionStepDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.actionStepName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.actionStepDesc {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.resultHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resultTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.resultTitle {
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.resultSubtitle {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.statusSettledBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  background: #e6f4ea;
+  color: #1e7e34;
+  border: 1px solid rgba(30, 126, 52, 0.2);
+}
+
+.maturityCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: #f9f8f6;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.maturityIcon {
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.maturityText {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.resultFooter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.revertContainer {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 @media (max-width: 740px) {
   .previewGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .identifiersCard {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .passphraseGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .sectionBadgeRow,
+  .settlementTitleRow,
+  .previewTitleRow,
+  .handoffTitleRow,
+  .resultTitleRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
   }
 }
 
 @media (max-width: 480px) {
+  .consoleContainer {
+    padding: 1.25rem 0.75rem 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
   .createFormContainer,
   .previewContainer,
-  .handoffContainer {
+  .handoffContainer,
+  .recoveryCard,
+  .settlementCard,
+  .settlementPreviewContainer,
+  .settlementResultContainer,
+  .revertContainer {
     padding: 1.25rem 1rem;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .sectionBadgeRow,
+  .settlementTitleRow,
+  .previewTitleRow,
+  .handoffTitleRow,
+  .resultTitleRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+  }
+  .creatorBadge,
+  .claimantBadge,
+  .recipientBadge,
+  .statusActiveBadge,
+  .statusPendingBadge {
+    white-space: nowrap;
   }
   .formTitle,
   .previewTitle,
-  .handoffTitle {
+  .handoffTitle,
+  .resultTitle {
     font-size: 1rem;
   }
   .amountInput {

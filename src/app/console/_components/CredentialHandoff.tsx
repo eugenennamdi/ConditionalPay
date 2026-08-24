@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { exportSinglePaymentCredentials } from '@conditionalpay/sdk';
+import { exportClaimAccessCredentials, exportSinglePaymentCredentials } from '@conditionalpay/sdk';
 import styles from '../console.module.css';
 import { CreateStep, PlannedCreate } from '../_lib/createTypes';
 
@@ -16,7 +16,8 @@ interface CredentialHandoffProps {
   onCreateAnother: () => void;
 }
 
-function formatAddress(addr: string): string {
+function formatAddress(addr?: string): string {
+  if (!addr) return '';
   if (addr.length <= 14) return addr;
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
@@ -31,26 +32,35 @@ export default function CredentialHandoff({
   isRechecking = false,
   onCreateAnother,
 }: CredentialHandoffProps) {
-  const [passphrase, setPassphrase] = useState<string>('');
-  const [confirmPassphrase, setConfirmPassphrase] = useState<string>('');
-  const [passphraseError, setPassphraseError] = useState<string>('');
-  const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [downloadInitiated, setDownloadInitiated] = useState<boolean>(false);
+  // Creator Recovery State
+  const [recoveryPassphrase, setRecoveryPassphrase] = useState<string>('');
+  const [confirmRecoveryPassphrase, setConfirmRecoveryPassphrase] = useState<string>('');
+  const [recoveryError, setRecoveryError] = useState<string>('');
+  const [isExportingRecovery, setIsExportingRecovery] = useState<boolean>(false);
+  const [recoveryDownloaded, setRecoveryDownloaded] = useState<boolean>(false);
 
-  async function handleExportDownload() {
-    setPassphraseError('');
+  // Claim Access State
+  const [claimPassphrase, setClaimPassphrase] = useState<string>('');
+  const [confirmClaimPassphrase, setConfirmClaimPassphrase] = useState<string>('');
+  const [claimError, setClaimError] = useState<string>('');
+  const [isExportingClaim, setIsExportingClaim] = useState<boolean>(false);
+  const [claimDownloaded, setClaimDownloaded] = useState<boolean>(false);
+  const [isClaimAccessExpanded, setIsClaimAccessExpanded] = useState<boolean>(false);
 
-    if (passphrase.length < 8) {
-      setPassphraseError('Passphrase must be at least 8 characters long.');
+  async function handleExportRecovery() {
+    setRecoveryError('');
+
+    if (recoveryPassphrase.length < 8) {
+      setRecoveryError('Passphrase must be at least 8 characters long.');
       return;
     }
 
-    if (passphrase !== confirmPassphrase) {
-      setPassphraseError('Passphrase and confirmation do not match.');
+    if (recoveryPassphrase !== confirmRecoveryPassphrase) {
+      setRecoveryError('Passphrase and confirmation do not match.');
       return;
     }
 
-    setIsExporting(true);
+    setIsExportingRecovery(true);
 
     try {
       const envelope = await exportSinglePaymentCredentials(
@@ -60,7 +70,7 @@ export default function CredentialHandoff({
           refundPreimage: planned.refundPreimage,
           nonce: planned.nonce,
         },
-        passphrase,
+        recoveryPassphrase,
       );
 
       const jsonStr = JSON.stringify(envelope, null, 2);
@@ -68,7 +78,7 @@ export default function CredentialHandoff({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `conditionalpay-${planned.paymentId.slice(0, 10)}.encrypted.json`;
+      anchor.download = `conditionalpay-recovery-${planned.paymentId.slice(0, 10)}.encrypted.json`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -77,12 +87,59 @@ export default function CredentialHandoff({
         URL.revokeObjectURL(url);
       }, 1000);
 
-      setDownloadInitiated(true);
+      setRecoveryDownloaded(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Encryption failed.';
-      setPassphraseError(msg);
+      setRecoveryError(msg);
     } finally {
-      setIsExporting(false);
+      setIsExportingRecovery(false);
+    }
+  }
+
+  async function handleExportClaimAccess() {
+    setClaimError('');
+
+    if (claimPassphrase.length < 8) {
+      setClaimError('Passphrase must be at least 8 characters long.');
+      return;
+    }
+
+    if (claimPassphrase !== confirmClaimPassphrase) {
+      setClaimError('Passphrase and confirmation do not match.');
+      return;
+    }
+
+    setIsExportingClaim(true);
+
+    try {
+      const envelope = await exportClaimAccessCredentials(
+        {
+          paymentId: planned.paymentId,
+          claimPreimage: planned.claimPreimage,
+        },
+        claimPassphrase,
+      );
+
+      const jsonStr = JSON.stringify(envelope, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `conditionalpay-claim-${planned.paymentId.slice(0, 10)}.encrypted.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+      setClaimDownloaded(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Encryption failed.';
+      setClaimError(msg);
+    } finally {
+      setIsExportingClaim(false);
     }
   }
 
@@ -94,6 +151,7 @@ export default function CredentialHandoff({
   const isDegraded = step === 'DEGRADED_VERIFICATION';
 
   const showRecheck = isStatusUnknown || isDegraded;
+  const isClaimAccessAvailable = isAccepted || isVerifying || isVerified || isDegraded;
 
   return (
     <div className={styles.handoffContainer}>
@@ -172,20 +230,22 @@ export default function CredentialHandoff({
         </div>
       </div>
 
-      {/* Save Recovery File Surface (Active upon ACCEPTED, VERIFIED, or DEGRADED) */}
+      {/* Creator Recovery Surface */}
       {!isPending && (
         <div className={styles.recoveryCard}>
           <div className={styles.recoveryHeader}>
-            <h3 className={styles.recoveryTitle}>SAVE RECOVERY FILE</h3>
+            <div className={styles.sectionBadgeRow}>
+              <h3 className={styles.recoveryTitle}>CREATOR RECOVERY</h3>
+              <span className={styles.creatorBadge}>CREATOR ONLY</span>
+            </div>
             <p className={styles.recoveryDesc}>
-              This encrypted file contains the bearer credentials needed to CLAIM or REFUND this
-              payment. Protect it with a passphrase.
+              Save this encrypted backup to recover or refund your payment. Do not share your recovery file.
             </p>
           </div>
 
-          {passphraseError && (
+          {recoveryError && (
             <div className={styles.recoveryAlert} role="alert">
-              {passphraseError}
+              {recoveryError}
             </div>
           )}
 
@@ -199,10 +259,10 @@ export default function CredentialHandoff({
                 type="password"
                 autoComplete="new-password"
                 className={styles.passphraseInput}
-                value={passphrase}
+                value={recoveryPassphrase}
                 onChange={(e) => {
-                  setPassphrase(e.target.value);
-                  if (passphraseError) setPassphraseError('');
+                  setRecoveryPassphrase(e.target.value);
+                  if (recoveryError) setRecoveryError('');
                 }}
               />
             </div>
@@ -216,10 +276,10 @@ export default function CredentialHandoff({
                 type="password"
                 autoComplete="new-password"
                 className={styles.passphraseInput}
-                value={confirmPassphrase}
+                value={confirmRecoveryPassphrase}
                 onChange={(e) => {
-                  setConfirmPassphrase(e.target.value);
-                  if (passphraseError) setPassphraseError('');
+                  setConfirmRecoveryPassphrase(e.target.value);
+                  if (recoveryError) setRecoveryError('');
                 }}
               />
             </div>
@@ -229,14 +289,14 @@ export default function CredentialHandoff({
             <button
               type="button"
               className={styles.primaryBtn}
-              onClick={handleExportDownload}
-              disabled={isExporting}
+              onClick={handleExportRecovery}
+              disabled={isExportingRecovery}
             >
-              {isExporting ? 'Encrypting…' : 'Download Encrypted Recovery (.json)'}
+              {isExportingRecovery ? 'Encrypting…' : 'Save recovery file'}
             </button>
           </div>
 
-          {downloadInitiated && (
+          {recoveryDownloaded && (
             <div className={styles.confirmationRow}>
               <label className={styles.checkboxLabel}>
                 <input
@@ -248,6 +308,100 @@ export default function CredentialHandoff({
                 <span>I have downloaded and safely saved my recovery file</span>
               </label>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Claim Access Surface (Optional recipient handoff) */}
+      {isClaimAccessAvailable && (
+        <div className={styles.recoveryCard}>
+          <div className={styles.recoveryHeader}>
+            <div className={styles.sectionBadgeRow}>
+              <h3 className={styles.recoveryTitle}>RECIPIENT HANDOFF</h3>
+              <span className={styles.claimantBadge}>RECIPIENT HANDOFF</span>
+            </div>
+            <p className={styles.recoveryDesc}>
+              Create encrypted claim access for the recipient. This lets the recipient claim the payment but cannot refund it.
+            </p>
+          </div>
+
+          {!isClaimAccessExpanded ? (
+            <div className={styles.downloadActionRow}>
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => setIsClaimAccessExpanded(true)}
+              >
+                Create claim access
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className={styles.recoverySubDesc}>
+                Anyone with the claim-access file and its passphrase can claim the payment while the claim path is valid.
+              </p>
+
+              {claimError && (
+                <div className={styles.recoveryAlert} role="alert">
+                  {claimError}
+                </div>
+              )}
+
+              <div className={styles.passphraseGrid}>
+                <div className={styles.passphraseField}>
+                  <label htmlFor="claim-passphrase" className={styles.formLabel}>
+                    Recipient claim passphrase (min 8 characters)
+                  </label>
+                  <input
+                    id="claim-passphrase"
+                    type="password"
+                    autoComplete="new-password"
+                    className={styles.passphraseInput}
+                    value={claimPassphrase}
+                    onChange={(e) => {
+                      setClaimPassphrase(e.target.value);
+                      if (claimError) setClaimError('');
+                    }}
+                  />
+                </div>
+
+                <div className={styles.passphraseField}>
+                  <label htmlFor="claim-confirm-passphrase" className={styles.formLabel}>
+                    Confirm recipient claim passphrase
+                  </label>
+                  <input
+                    id="claim-confirm-passphrase"
+                    type="password"
+                    autoComplete="new-password"
+                    className={styles.passphraseInput}
+                    value={confirmClaimPassphrase}
+                    onChange={(e) => {
+                      setConfirmClaimPassphrase(e.target.value);
+                      if (claimError) setClaimError('');
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.downloadActionRow}>
+                <button
+                  type="button"
+                  className={styles.secondaryBtn}
+                  onClick={handleExportClaimAccess}
+                  disabled={isExportingClaim || claimPassphrase.length < 8 || confirmClaimPassphrase.length < 8}
+                >
+                  {isExportingClaim ? 'Encrypting…' : 'Download claim access'}
+                </button>
+              </div>
+
+              {claimDownloaded && (
+                <div className={styles.successCard}>
+                  <p className={styles.successMessage}>
+                    ✓ Claim access file downloaded. Provide this file and its passphrase to the recipient.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

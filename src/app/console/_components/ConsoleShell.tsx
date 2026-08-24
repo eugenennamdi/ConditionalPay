@@ -7,12 +7,16 @@ import styles from '../console.module.css';
 import VerifiedDemo from './VerifiedDemo';
 import WalletConnect from './WalletConnect';
 import CreatePayment from './CreatePayment';
+import ClaimPayment from './ClaimPayment';
+import RefundPayment from './RefundPayment';
 import UnsavedModal from './UnsavedModal';
-import { ConsoleWalletProvider } from '../_lib/ConsoleWalletContext';
+import { ConsoleWalletProvider, useConsoleWallet } from '../_lib/ConsoleWalletContext';
 import {
   CONDITIONAL_PAY_CONTRACT,
   STRK20_POOL_CONTRACT,
 } from './verifiedDemoEvidence';
+import { myFrontendProviders } from '@/utils/constants';
+import { RpcProvider } from 'starknet';
 
 export type ConsoleMode = 'create' | 'claim' | 'refund' | 'verifiedDemo';
 
@@ -22,10 +26,15 @@ function formatAddress(addr: string): string {
 }
 
 function ConsoleInner() {
+  const { connectedWallet, address, handleConnect } = useConsoleWallet();
   const [activeMode, setActiveMode] = useState<ConsoleMode>('create');
   const [hasUnsaved, setHasUnsaved] = useState<boolean>(false);
   const [pendingMode, setPendingMode] = useState<ConsoleMode | null>(null);
   const [isUnsavedModalOpen, setIsUnsavedModalOpen] = useState<boolean>(false);
+
+  const defaultProvider =
+    myFrontendProviders[0] ??
+    new RpcProvider({ nodeUrl: 'https://starknet-mainnet.public.blastapi.io/rpc/v0_7' });
 
   useEffect(() => {
     function syncHash() {
@@ -35,6 +44,10 @@ function ConsoleInner() {
           setActiveMode('verifiedDemo');
         } else if (hash === '#create') {
           setActiveMode('create');
+        } else if (hash === '#claim') {
+          setActiveMode('claim');
+        } else if (hash === '#refund') {
+          setActiveMode('refund');
         }
       }
     }
@@ -127,8 +140,7 @@ function ConsoleInner() {
             aria-selected={activeMode === 'claim'}
             className={styles.modeTab}
             data-active={activeMode === 'claim'}
-            disabled
-            title="Claim flow unavailable in read-only mode"
+            onClick={() => handleModeClick('claim')}
           >
             <span>Claim</span>
           </button>
@@ -138,8 +150,7 @@ function ConsoleInner() {
             aria-selected={activeMode === 'refund'}
             className={styles.modeTab}
             data-active={activeMode === 'refund'}
-            disabled
-            title="Refund flow unavailable in read-only mode"
+            onClick={() => handleModeClick('refund')}
           >
             <span>Refund</span>
           </button>
@@ -157,6 +168,24 @@ function ConsoleInner() {
 
         {/* Active Workspace */}
         {activeMode === 'create' && <CreatePayment onUnsavedChange={setHasUnsaved} />}
+        {activeMode === 'claim' && (
+          <ClaimPayment
+            wallet={connectedWallet}
+            provider={defaultProvider}
+            walletConnected={Boolean(connectedWallet && address)}
+            onConnectWallet={() => void handleConnect()}
+            walletAddress={address}
+          />
+        )}
+        {activeMode === 'refund' && (
+          <RefundPayment
+            wallet={connectedWallet}
+            provider={defaultProvider}
+            walletConnected={Boolean(connectedWallet && address)}
+            onConnectWallet={() => void handleConnect()}
+            walletAddress={address}
+          />
+        )}
         {activeMode === 'verifiedDemo' && <VerifiedDemo />}
 
         {/* Infrastructure Contract Bar */}
