@@ -7,10 +7,11 @@ ConditionalPay makes those assets programmable.
 
 [![Live Console](https://img.shields.io/badge/Live%20Console-conditionalpay.vercel.app-blue)](https://conditionalpay.vercel.app/console)
 [![Mainnet Contract](https://img.shields.io/badge/Mainnet-0x0166e318...b483-emerald)](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+[![Voyager Verified](https://img.shields.io/badge/Voyager-Source%20Verified-brightgreen)](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 - **Production Console:** [https://conditionalpay.vercel.app/console](https://conditionalpay.vercel.app/console)
-- **Mainnet Contract:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+- **Mainnet Contract:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483) *(Source Verified on Voyager)*
 - **Mainnet Evidence:** [MAINNET_EVIDENCE.md](./MAINNET_EVIDENCE.md)
 - **Demo Video:** *pending*
 
@@ -101,7 +102,7 @@ ConditionalPay Contract (0x0166e3...b483)
 
 ## Verified Mainnet evidence
 
-- **ConditionalPay:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+- **ConditionalPay:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483) *(Source Verified on Voyager)*
 - **Class hash:** `0x04ba374a48b878cb1b59b9cbfdc1c56527a6a1d2c64f645c7435a79c037c828b`
 - **Canonical STRK20 pool:** [`0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a`](https://voyager.online/contract/0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a)
 - **STRK:** [`0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d`](https://voyager.online/contract/0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d)

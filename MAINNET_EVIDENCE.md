@@ -10,6 +10,14 @@
 
 Post-deployment reads confirmed that `get_strk20_pool()` equals the canonical STRK20 pool and that the initial `get_locked_by_token(STRK)` value was zero.
 
+## Source Verification
+
+- **Contract**: [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+- **Class hash**: `0x04ba374a48b878cb1b59b9cbfdc1c56527a6a1d2c64f645c7435a79c037c828b`
+- **Cairo / Scarb**: `2.20.0`
+- **Voyager verification**: `Success`
+- **Verified class**: [https://voyager.online/class/0x04ba374a48b878cb1b59b9cbfdc1c56527a6a1d2c64f645c7435a79c037c828b](https://voyager.online/class/0x04ba374a48b878cb1b59b9cbfdc1c56527a6a1d2c64f645c7435a79c037c828b)
+
 ## Production Console Mainnet E2E (Phase 6)
 
 The interactive [ConditionalPay Console](https://conditionalpay.vercel.app/console) was validated on Starknet Mainnet via Ready Wallet through a complete controlled end-to-end lifecycle.
