@@ -1,4 +1,4 @@
-# ConditionalPay Mainnet evidence
+# ConditionalPay Mainnet Evidence
 
 ## Deployment
 
@@ -10,7 +10,25 @@
 
 Post-deployment reads confirmed that `get_strk20_pool()` equals the canonical STRK20 pool and that the initial `get_locked_by_token(STRK)` value was zero.
 
-## Verified lifecycle
+## Production Console Mainnet E2E (Phase 6)
+
+The interactive [ConditionalPay Console](https://conditionalpay.vercel.app/console) was validated on Starknet Mainnet via Ready Wallet through a complete controlled end-to-end lifecycle.
+
+| Step | Transaction | Block | Execution / finality | State transition | Authenticated ConditionalPay event |
+|---|---|---:|---|---|---|
+| CREATE | [`0x37b475d725258586de2db0ce2e6089585589c19658eb5142a1f1a555ddb555f`](https://voyager.online/tx/0x37b475d725258586de2db0ce2e6089585589c19658eb5142a1f1a555ddb555f) | 13827404 | `SUCCEEDED / ACCEPTED_ON_L2` | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
+| CLAIM PREVIEW | *Ready Wallet preview deliberately cancelled* | — | `CANCELLED_BY_USER` | *Remains ACTIVE* | — |
+| REFUND | [`0x441b1912620f38de58222ab3b8acc562d1c3d157f4f85a695e3042a969974aa`](https://voyager.online/tx/0x441b1912620f38de58222ab3b8acc562d1c3d157f4f85a695e3042a969974aa) | 13829460 | `SUCCEEDED / ACCEPTED_ON_L2` | `ACTIVE -> REFUNDED` | `PaymentRefunded` |
+
+### Lifecycle Details
+- **Payment ID**: `0x33715ae8d6ff7d45f87c504ae6d203f32d412d2010a1175c4ca5da1e02a04d1`
+- **Principal Amount**: `0.1 STRK`
+- **Claim Time (`claim_after`)**: `0` (immediate eligibility)
+- **Expiry (`expires_at`)**: `1787638190` (1 hour refund window)
+- **CLAIM Preview**: Ready Wallet OPEN-note settlement topology was previewed and inspected, then deliberately cancelled. No CLAIM transaction was broadcast, and payment was re-verified onchain as `ACTIVE`.
+- **Terminal State**: `getPayment(paymentId).state == 3` (`REFUNDED`). Replay is strictly prevented and funds returned to the creator's shielded STRK20 note.
+
+## Historical Bootstrap Lifecycle
 
 | Step | Transaction | Block | Execution / finality | State transition | Authenticated ConditionalPay event |
 |---|---|---:|---|---|---|
@@ -19,12 +37,9 @@ Post-deployment reads confirmed that `get_strk20_pool()` equals the canonical ST
 | TX3 CREATE B | [`0x2f2f88ab25f64a619aa05dcaff7c2af85efc6cd086a229696ac8edc3bdd6d26`](https://voyager.online/tx/0x2f2f88ab25f64a619aa05dcaff7c2af85efc6cd086a229696ac8edc3bdd6d26) | 13707204 | `SUCCEEDED / ACCEPTED_ON_L1` | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
 | TX4 REFUND B | [`0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d`](https://voyager.online/tx/0x64cfec311d340f97fb0d9245de01ab36f3267259ac162290265e55ca99dd88d) | 13708549 | `SUCCEEDED / ACCEPTED_ON_L1` | `ACTIVE -> REFUNDED` | `PaymentRefunded` |
 
-The events above were authenticated by contract address and event selector. They must not be attributed using each transaction's sender because STRK20 private transactions are relayed.
-
-## Final state
-
+### Historical Snapshot
 - Payment A: `CLAIMED`
 - Payment B: `REFUNDED`
-- `get_locked_by_token(STRK) = 0`
+- Snapshot liability at block 13708549: `get_locked_by_token(STRK) = 0`
 
-The historical localhost execution harness used for these transactions is preserved separately on branch `evidence/mainnet-lifecycle` at tag `mainnet-lifecycle-v1`. It is intentionally absent from the submission UI.
+The historical localhost execution harness used for bootstrap transactions is preserved on branch `evidence/mainnet-lifecycle` at tag `mainnet-lifecycle-v1`.

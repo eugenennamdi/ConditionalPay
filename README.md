@@ -1,153 +1,173 @@
 # ConditionalPay
 
-Programmable private settlement infrastructure for [STRK20](https://strk20-by-example.org/starknet-wallet-api/starknet-js) on Starknet.
+**Programmable private settlement infrastructure for STRK20 on Starknet.**
 
-ConditionalPay lets applications lock a shielded asset behind a hashlock, time window, and optional approval gate, then settle it through either CLAIM or REFUND. The contract deliberately avoids storing creator, claimant, or refunder addresses while preserving public, auditable conditions and per-token solvency accounting.
+STRK20 gives applications shielded assets.
+ConditionalPay makes those assets programmable.
 
-## Why conditional settlement
+[![Live Console](https://img.shields.io/badge/Live%20Console-conditionalpay.vercel.app-blue)](https://conditionalpay.vercel.app/console)
+[![Mainnet Contract](https://img.shields.io/badge/Mainnet-0x0166e318...b483-emerald)](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-Private assets still need programmable outcomes: pay when a secret is revealed, wait until a release time, require an approver, or return funds after expiry. A normal public escrow links user addresses directly to those actions. ConditionalPay instead receives and returns value through the STRK20 pool's `privacy_invoke` path, so the application contract enforces the conditions without recording those participant roles.
+- **Production Console:** [https://conditionalpay.vercel.app/console](https://conditionalpay.vercel.app/console)
+- **Mainnet Contract:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+- **Mainnet Evidence:** [MAINNET_EVIDENCE.md](./MAINNET_EVIDENCE.md)
+- **Demo Video:** *pending*
 
-This is not a claim that the entire payment is hidden. Token, amount, conditions, timing, application activity, and OPEN-note settlement amount are public at the ConditionalPay/STRK20 boundary.
+---
 
-## Lifecycle
+## State machine
 
-### CREATE
+```text
+CREATE → ACTIVE → CLAIMED
+                ↘ REFUNDED
+```
 
-The wallet constructs `[withdraw, invoke CREATE]`. STRK20 withdraws the exact token amount to ConditionalPay, then the pool invokes the contract. ConditionalPay validates the amount and timing, derives a domain-separated Payment ID, verifies that its token balance covers the prospective liability, stores the payment as `ACTIVE`, increments `locked_by_token[token]`, and returns no output note.
+- **Hashlocked claims:** CLAIM reveals a domain-separated Poseidon preimage matching the stored hashlock.
+- **Time locks:** `claim_after` gates execution until a block timestamp; `expires_at` opens the refund window.
+- **Optional approval:** configured Starknet address must invoke `approve(payment_id)` before claim revelation.
+- **Encrypted Creator Recovery:** client-side PBKDF2 (600,000 iter) + AES-256-GCM envelope preserving full payment metadata and preimages.
+- **Reduced Claim Access:** exportable recipient envelope containing solely the payment identifier and claim preimage.
+- **Ready Wallet STRK20 integration:** native STRK20 `strk20InvokeTransaction` execution with OPEN-note settlement topology.
+- **Shielded return:** settled funds return directly into STRK20 shielded notes.
 
-### CLAIM
+---
 
-The wallet constructs `[transfer OPEN, invoke CLAIM]`. ConditionalPay requires an `ACTIVE` payment, a matching domain-separated claim preimage, `block_timestamp >= claim_after`, `block_timestamp < expires_at` when configured, and completed approval when an approver is configured. It transitions the payment to `CLAIMED`, reduces liability, and returns the stored token and amount to the selected STRK20 OPEN note.
+## How it works
 
-### REFUND
+Standard public escrows link user account addresses directly to locked funds and claim operations. ConditionalPay instead operates through the STRK20 pool's `privacy_invoke` path:
 
-The wallet constructs `[transfer OPEN, invoke REFUND]`. ConditionalPay requires an `ACTIVE` payment, a matching refund preimage, a configured expiry, and `block_timestamp >= expires_at`. It transitions the payment to `REFUNDED`, reduces liability, and returns the stored token and amount to the selected STRK20 OPEN note.
+1. **CREATE (`withdraw` + `invoke CREATE`):** The wallet withdraws funds from an STRK20 note directly to ConditionalPay. ConditionalPay verifies incoming funding against prospective liability, derives a domain-separated Payment ID, and stores the payment as `ACTIVE`.
+2. **CLAIM (`transfer OPEN` + `invoke CLAIM`):** The claimant presents the claim preimage. Upon verifying time conditions, optional approval, and hashlock validity, ConditionalPay marks the payment `CLAIMED` and deposits the stored amount into the claimant's STRK20 OPEN note.
+3. **REFUND (`transfer OPEN` + `invoke REFUND`):** If the payment expires (`block_timestamp >= expires_at`), the creator presents the refund preimage to transition the state to `REFUNDED` and recover funds into their STRK20 OPEN note.
 
-`CLAIMED` and `REFUNDED` are terminal states, preventing replay or double settlement.
+`CLAIMED` and `REFUNDED` are strict terminal states, preventing double settlement or replay.
 
-## Conditions and credentials
+---
 
-- **Hashlock:** CLAIM reveals a preimage whose domain-separated Poseidon hash equals the stored hashlock.
-- **Claim time:** `claim_after` is inclusive: CLAIM is allowed at or after that timestamp.
-- **Expiry:** CLAIM requires `now < expires_at`; REFUND requires `now >= expires_at`. An expiry of zero means no claim expiry and no refund path.
-- **Optional approval:** when `approver != 0`, that public Starknet address must call `approve(payment_id)` before CLAIM. The claim preimage is still required.
-- **Bearer model:** claim and refund preimages are bearer credentials. Possession of an unused valid credential may authorize the corresponding eligible settlement.
+## Interactive Console
 
-The SDK supports password-encrypted recovery envelopes. Passphrases must never be stored beside envelopes, and plaintext credentials must not be persisted in query strings, browser storage, logs, analytics, or telemetry. See [SECURITY.md](./SECURITY.md).
+The production application at [`/console`](https://conditionalpay.vercel.app/console) provides full lifecycle management:
+
+- **Create Payment:** configure amount, claim eligibility time, expiry window, and optional approver; generates cryptographic felt252 preimages and downloads an encrypted Creator Recovery file.
+- **Claim Access Handoff:** creator exports a password-encrypted recipient bundle containing only the claim credential.
+- **Claim Settlement:** recipient imports Claim Access credentials, runs preflight verification, and executes settlement to Ready Wallet.
+- **Refund Settlement:** creator imports Creator Recovery, verifies expiry eligibility, and executes refund settlement.
+- **Verified Demo:** independent, wallet-free replay mode that authenticates recorded Mainnet evidence and queries live Starknet RPC state.
+
+---
 
 ## Architecture
 
 ```text
-Application UI
-    |
-    | canonical actions from @conditionalpay/sdk
-    v
-Privacy-enabled Starknet wallet
-    |
-    | STRK20 proof construction, note management, relay
-    v
-Canonical STRK20 pool
-    |
-    | privacy_invoke(ConditionalPayAction)
-    v
-ConditionalPay
-    |-- payment state machine
-    |-- Poseidon hashlocks and Payment IDs
-    |-- optional address-gated approval
-    |-- per-token locked liability
-    `-- exact ERC-20 allowance for settlement back to STRK20
+Application UI / Console
+    │
+    │ @conditionalpay/sdk action builders
+    ▼
+Ready Wallet / Privacy Wallet
+    │
+    │ STRK20 zero-knowledge proof construction & note relay
+    ▼
+Canonical STRK20 Pool (0x040337...812a)
+    │
+    │ privacy_invoke(ConditionalPayAction)
+    ▼
+ConditionalPay Contract (0x0166e3...b483)
+    ├── Payment state machine & Poseidon hashlocks
+    ├── Address-gated approval registry
+    ├── Per-token locked liability accounting (get_locked_by_token)
+    └── Exact ERC-20 allowance for settlement back to STRK20
 ```
 
-The dapp does not receive the user's STRK20 viewing key, notes, or proof material. Wallet-mediated integration follows the official [STRK20 Wallet API guide](https://strk20-by-example.org/starknet-wallet-api/starknet-js).
+---
 
 ## Privacy boundary
 
-### Public
+### What ConditionalPay protects
+- **No address storage:** ConditionalPay does not store creator, claimant, or refunder addresses in its payment state.
+- **Shielded outputs:** Settlement returns directly into STRK20 shielded notes via `transfer OPEN`.
+- **Relayed execution:** Private transactions are submitted by STRK20 relayers; transaction senders do not represent participant identities.
 
-- ConditionalPay/anonymizer and STRK20 pool invocation.
-- Token and amount at the application/anonymizer boundary.
-- Hashlock, refund hash, nonce, claim timing, expiry, configured approver, and approval status.
-- Lifecycle events and timing.
-- Claim or refund preimage after successful revelation.
-- OPEN-note settlement amount.
+### What remains public onchain
+- Token address and principal amount at the contract boundary.
+- Hashlocks, refund hashes, nonces, timing constraints (`claim_after`, `expires_at`), approver address, and approval state.
+- Emitted lifecycle events (`PaymentCreated`, `PaymentClaimed`, `PaymentRefunded`).
+- Revealed preimages after successful claim or refund execution.
+- OPEN-note settlement amounts at the STRK20 boundary.
 
-### Not stored or role-linked by ConditionalPay
+*ConditionalPay makes no claim of total anonymity, hidden token amounts, or hidden timing conditions.*
 
-- Creator address.
-- Claimant address.
-- Refunder address.
+---
 
-Settlement returns into a STRK20 note. Private transactions are relayed, so the transaction sender is the relayer and must not be treated as the user. ConditionalPay does not claim that token, amount, conditions, or timing are hidden.
+## Verified Mainnet evidence
 
-## Mainnet deployment
+- **ConditionalPay:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
+- **Class hash:** `0x04ba374a48b878cb1b59b9cbfdc1c56527a6a1d2c64f645c7435a79c037c828b`
+- **Canonical STRK20 pool:** [`0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a`](https://voyager.online/contract/0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a)
+- **STRK:** [`0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d`](https://voyager.online/contract/0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d)
 
-- Network: Starknet Mainnet
-- ConditionalPay: [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483)
-- Class hash: `0x04ba374a48b878cb1b59b9cbfdc1c56527a6a1d2c64f645c7435a79c037c828b`
-- Canonical STRK20 pool: [`0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a`](https://voyager.online/contract/0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a)
-- STRK: [`0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d`](https://voyager.online/contract/0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d)
+| Step | Transaction | Block | Status | Authenticated Event |
+|---|---|---:|---|---|
+| CREATE | [`0x37b475...db555f`](https://voyager.online/tx/0x37b475d725258586de2db0ce2e6089585589c19658eb5142a1f1a555ddb555f) | 13827404 | `ACCEPTED_ON_L2` | `PaymentCreated` |
+| CLAIM | [`0xde61c4...7779b7`](https://voyager.online/tx/0xde61c431a92dabc7b8672cd08cdce0b479b83ca261c0591992a84e6e7779b7) | 13704626 | `ACCEPTED_ON_L1` | `PaymentClaimed` |
+| REFUND | [`0x441b19...974aa`](https://voyager.online/tx/0x441b1912620f38de58222ab3b8acc562d1c3d157f4f85a695e3042a969974aa) | 13829460 | `ACCEPTED_ON_L2` | `PaymentRefunded` |
 
-Deployment reads confirmed the canonical pool and zero initial liability. The complete Mainnet evidence is recorded in [MAINNET_EVIDENCE.md](./MAINNET_EVIDENCE.md) and `strk20.json`.
+See [MAINNET_EVIDENCE.md](./MAINNET_EVIDENCE.md) for full transaction parameters and historical bootstrap details.
 
-| Flow | Result | Authenticated event |
-|---|---|---|
-| TX1 CREATE A | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
-| TX2 CLAIM A | `ACTIVE -> CLAIMED` | `PaymentClaimed` |
-| TX3 CREATE B | `UNINITIALIZED -> ACTIVE` | `PaymentCreated` |
-| TX4 REFUND B | `ACTIVE -> REFUNDED` | `PaymentRefunded` |
-
-Final verified liability: `get_locked_by_token(STRK) = 0`.
+---
 
 ## SDK
 
-`packages/sdk` provides:
+`packages/sdk` provides typed TypeScript abstractions:
 
-- Domain-separated Poseidon hashing and Payment ID derivation.
-- Strict Cairo-compatible validation and calldata encoding.
-- Canonical `buildCreateActions`, `buildClaimActions`, and `buildRefundActions` builders.
-- Onchain payment/liability queries and authenticated event parsing.
-- CSPRNG credential generation and password-encrypted recovery envelopes.
-- Cross-language TypeScript/Cairo test vectors.
+- Domain-separated Poseidon hashing and Payment ID derivation matching Cairo contract logic.
+- Canonical action builders: `buildCreateActions`, `buildClaimActions`, `buildRefundActions`.
+- Onchain state queries (`getPayment`, `getLockedByToken`, `getStrk20Pool`).
+- Authenticated event parsing (`parseConditionalPayEvent`).
+- CSPRNG credential generation (`generateSecurePreimage`, `generateSecureNonce`).
+- OWASP PBKDF2/AES-256-GCM encrypted envelope export and import (`exportSinglePaymentCredentials`, `importClaimAccessCredentials`).
+- Deterministic cross-language test vectors shared with Cairo suites.
 
-The SDK is currently consumed as a private npm workspace package and is not published to npm.
+---
 
-## Development
+## Development and testing
 
-Requirements: Node.js 24+, npm 11+, Scarb with Cairo 2.20-compatible tooling, and a Starknet RPC endpoint.
+### Prerequisites
+- Node.js 24+
+- npm 11+
+- Scarb (Cairo 2.20+)
+- Starknet RPC endpoint
 
 ```bash
+# Install dependencies
 npm ci
+
+# Environment configuration
 cp .env.example .env.local
-npm run dev
-```
 
-Set `NEXT_PUBLIC_PROVIDER_URL` in `.env.local` to the RPC provider key segment expected by `src/utils/constants.ts`. This is a browser-exposed value; restrict it at the provider and never place wallet or recovery secrets in environment files.
-
-## Verification
-
-```bash
+# Run complete test suites
+(cd cairo && scarb test)
 npm run check:test-vectors
 npm run test:sdk
 npm run test:frontend
-npx tsc --noEmit
-npm run lint
+npm test
+
+# Build production application
 npm run build
-(cd cairo && scarb --profile release test)
 ```
 
-The Cairo and TypeScript suites share deterministic Poseidon vectors. Mainnet evidence demonstrates CREATE/CLAIM and CREATE/REFUND with final zero liability; it is not a substitute for a formal audit.
+---
 
-## Current limitations
+## Security and limitations
 
-- No formal third-party security audit has been completed.
-- The submission UI is intentionally read-only after completing the evidence lifecycle; the historical localhost execution harness is preserved on branch `evidence/mainnet-lifecycle` and tag `mainnet-lifecycle-v1`.
-- The frontend supports canonical STRK only, although the contract and SDK are token-generic.
-- Credentials are bearer secrets with no onchain rotation or revocation.
-- A valid credential holder may route settlement to another valid OPEN note; settlement is not bound to a stored claimant/refunder address.
-- Payment discovery/indexing and a polished generic execution UX remain future product work.
-- Wallet support depends on a compatible privacy-enabled Starknet wallet and the current Wallet API implementation.
+- **Audit status:** No formal third-party audit has been completed.
+- **Bearer model:** Claim and refund preimages are bearer secrets. Anyone with access to a valid preimage and meeting timing/approval conditions may execute settlement.
+- **Key management:** Passphrases must never be stored beside encrypted envelopes. Plaintext preimages are never persisted to disk, browser storage, or server logs. See [SECURITY.md](./SECURITY.md).
+- **Token support:** Frontend Console is configured for canonical STRK, though the Cairo contract and TypeScript SDK are token-agnostic.
+- **Wallet compatibility:** Requires a privacy-enabled Starknet wallet supporting the STRK20 Wallet API (such as Ready Wallet).
+
+---
 
 ## License
 
-ConditionalPay is available under the [MIT License](./LICENSE). The original starter-kit copyright attribution is preserved.
+ConditionalPay is released under the [MIT License](./LICENSE). Original starter-kit copyright attribution is preserved.

@@ -160,15 +160,14 @@ test("Phase 1: Verified Demo evidence matches exact independent canonical Mainne
   assert.equal(new Set(allBlocks).size, 4, "All 4 block numbers must be distinct historical milestones");
 });
 
-test("Phase 1: strk20.json matches canonical contract and transactions exactly", () => {
+test("Phase 1: strk20.json matches canonical contract and qualifying transactions exactly", () => {
   const strk20 = JSON.parse(read("strk20.json"));
 
   assert.deepEqual(strk20.contracts, [CANONICAL_CONDITIONAL_PAY_CONTRACT]);
   assert.deepEqual(strk20.transactions, [
-    CANONICAL_PAYMENT_A_CREATE_HASH,
+    "0x37b475d725258586de2db0ce2e6089585589c19658eb5142a1f1a555ddb555f",
     CANONICAL_PAYMENT_A_CLAIM_HASH,
-    CANONICAL_PAYMENT_B_CREATE_HASH,
-    CANONICAL_PAYMENT_B_REFUND_HASH,
+    "0x441b1912620f38de58222ab3b8acc562d1c3d157f4f85a695e3042a969974aa",
   ]);
 });
 
