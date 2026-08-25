@@ -201,8 +201,6 @@ test("Phase 3: Verified Demo remains usable without a wallet and contains no wal
   assert.doesNotMatch(demoSource, /WalletConnect/);
   assert.doesNotMatch(demoSource, /requireWallet/);
   assert.doesNotMatch(demoSource, /isConnected/);
-  assert.match(demoSource, /Real Mainnet transactions/);
-  assert.match(demoSource, /No wallet required/);
 });
 
 test("Phase 3: No secret collection (private keys, recovery phrase, seed phrase) UI exists", () => {

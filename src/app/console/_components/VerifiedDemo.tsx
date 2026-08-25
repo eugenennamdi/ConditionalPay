@@ -87,34 +87,6 @@ export default function VerifiedDemo() {
     triggerReplay(isPointer);
   };
 
-  const performLiveVerification = useCallback(async () => {
-    setVerificationStatus('verifying');
-    try {
-      const provider = getFallbackProvider();
-      await getPayment(provider, CONDITIONAL_PAY_CONTRACT, payment.paymentId);
-
-      try {
-        const histRes = await provider.callContract(
-          {
-            contractAddress: CONDITIONAL_PAY_CONTRACT,
-            entrypoint: 'get_locked_by_token',
-            calldata: [STRK_TOKEN_ADDRESS],
-          },
-          EVIDENCE_TERMINAL_BLOCK,
-        );
-        if (Array.isArray(histRes) && histRes[0]) {
-          setHistoricalLiability(BigInt(histRes[0]).toString());
-        }
-      } catch {
-        setHistoricalLiability('0');
-      }
-
-      setVerificationStatus('verified');
-    } catch {
-      setVerificationStatus('degraded');
-    }
-  }, [payment.paymentId]);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -165,36 +137,11 @@ export default function VerifiedDemo() {
           <p className={styles.demoDescription}>
             Replay the completed CLAIM and REFUND paths using real Starknet Mainnet transactions.
           </p>
-          <div className={styles.trustLine}>
-            <span>Real Mainnet transactions</span>
-            <span>·</span>
-            <span>No wallet required</span>
-          </div>
-        </div>
-
-        <div className={styles.demoHeroActions}>
-          <div className={styles.liveVerificationBox} role="status" aria-live="polite">
-            <span
-              className={styles.statusIndicator}
-              data-status={verificationStatus}
-              aria-hidden="true"
-            />
-            <span>
-              {verificationStatus === 'verifying' && 'Verifying onchain…'}
-              {verificationStatus === 'verified' && 'Verified onchain'}
-              {verificationStatus === 'degraded' &&
-                'Live verification unavailable. Showing recorded Mainnet evidence.'}
-              {verificationStatus === 'idle' && 'Ready for verification'}
-            </span>
-            <button
-              className={styles.recheckButton}
-              onClick={performLiveVerification}
-              disabled={verificationStatus === 'verifying'}
-              title="Re-verify contract state via RPC"
-            >
-              Re-check
-            </button>
-          </div>
+          {verificationStatus === 'degraded' && (
+            <div className={styles.demoDegradedNotice} role="status">
+              Live verification unavailable. Showing recorded Mainnet evidence.
+            </div>
+          )}
         </div>
       </section>
 

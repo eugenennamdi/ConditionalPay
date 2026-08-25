@@ -90,7 +90,7 @@
 .networkBadge {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.4rem;
   padding: 0.25rem 0.625rem;
   border-radius: 9999px;
   background: var(--field);
@@ -102,6 +102,14 @@
   text-transform: uppercase;
   color: var(--ink-soft);
   white-space: nowrap;
+}
+
+.networkIcon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .networkDot {
@@ -202,6 +210,14 @@
   outline-offset: 2px;
 }
 
+.connectedIcon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .connectedDot {
   width: 6px;
   height: 6px;
@@ -224,7 +240,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 280px;
+  width: min(280px, calc(100vw - 1.5rem));
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -257,6 +273,9 @@
 }
 
 .popoverNetworkTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-family: var(--font-mono-ui), 'Space Mono', monospace;
   font-size: 0.625rem;
   font-weight: 600;
@@ -266,6 +285,15 @@
   background: var(--field);
   border: 1px solid var(--line);
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.popoverNetworkIcon {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .popoverAlert {
@@ -501,7 +529,20 @@
   font-size: 0.9375rem;
   line-height: 1.55;
   color: var(--ink-soft);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
+}
+
+.demoDegradedNotice {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.875rem;
+  border-radius: 6px;
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .trustLine {
@@ -1076,15 +1117,12 @@
 
 /* Contract Bar Footer */
 .contractFooter {
-  margin-top: 3rem;
-  padding: 1.25rem 1.5rem;
+  margin-top: 3.5rem;
+  padding: 1.5rem 0 2.5rem 0;
   border-top: 1px solid var(--line);
-  background: var(--paper);
-  border-radius: 8px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 1.5rem;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1092,37 +1130,47 @@
 .contractInfoGroup {
   display: flex;
   align-items: center;
-  gap: 2rem;
+  gap: 2.25rem;
+  flex-wrap: wrap;
 }
 
 .contractItem {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   font-size: 0.8125rem;
-  flex-wrap: wrap;
 }
 
-.contractItem strong {
-  font-weight: 600;
+.contractLabel {
+  font-weight: 500;
   color: var(--ink-soft);
+  font-size: 0.8125rem;
 }
 
-.contractItem code {
-  font-family: var(--font-mono-ui), 'Space Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.contractItem a {
-  color: var(--green);
-  text-decoration: none;
+.contractLink {
   display: inline-flex;
   align-items: center;
+  gap: 0.25rem;
+  color: var(--green);
+  text-decoration: none;
+  font-family: var(--font-mono-ui), 'Space Mono', monospace;
+  font-size: 0.75rem;
+  transition: opacity 140ms ease;
 }
 
-.contractItem a:hover {
+.contractLink code {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.contractLink:hover {
   text-decoration: underline;
+}
+
+.contractArrow {
+  font-size: 0.75rem;
+  opacity: 0.8;
 }
 
 /* Responsive Media Queries */
@@ -1235,6 +1283,13 @@
   }
 }
 
+@media (max-width: 640px) {
+  .brandDivider,
+  .consoleLabel {
+    display: none;
+  }
+}
+
 @media (max-width: 480px) {
   .consoleHeaderSticky {
     padding: 0.625rem 0.875rem;
@@ -1259,6 +1314,10 @@
     padding: 0.2rem 0.45rem;
     font-size: 0.625rem;
     gap: 0.25rem;
+  }
+  .networkIcon {
+    width: 12px;
+    height: 12px;
   }
   .brandTitle {
     font-size: 0.875rem;

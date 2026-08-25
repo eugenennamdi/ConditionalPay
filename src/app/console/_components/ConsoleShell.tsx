@@ -111,11 +111,7 @@ function ConsoleInner() {
             </div>
           </Link>
 
-          <div className={styles.headerMeta}>
-            <div className={styles.networkBadge} aria-label="Connected to Starknet Mainnet">
-              <span className={styles.networkDot} aria-hidden="true" />
-              <span>Mainnet</span>
-            </div>
+          <div className={styles.headerMeta} aria-label="Starknet Mainnet">
             <WalletConnect />
           </div>
         </div>
@@ -192,32 +188,30 @@ function ConsoleInner() {
         <footer className={styles.contractFooter}>
           <div className={styles.contractInfoGroup}>
             <div className={styles.contractItem}>
-              <strong>ConditionalPay:</strong>
-              <code>{formatAddress(CONDITIONAL_PAY_CONTRACT)}</code>
+              <span className={styles.contractLabel}>ConditionalPay:</span>
               <a
                 href={`https://voyager.online/contract/${CONDITIONAL_PAY_CONTRACT}`}
                 target="_blank"
                 rel="noreferrer"
-                className={styles.explorerLink}
-                title="View ConditionalPay contract on Voyager"
+                className={styles.contractLink}
+                title="View ConditionalPay contract on explorer"
               >
-                <span>Voyager</span>
-                <span aria-hidden="true">↗</span>
+                <code>{formatAddress(CONDITIONAL_PAY_CONTRACT)}</code>
+                <span className={styles.contractArrow} aria-hidden="true">↗</span>
               </a>
             </div>
 
             <div className={styles.contractItem}>
-              <strong>STRK20 Pool:</strong>
-              <code>{formatAddress(STRK20_POOL_CONTRACT)}</code>
+              <span className={styles.contractLabel}>STRK20 Pool:</span>
               <a
                 href={`https://voyager.online/contract/${STRK20_POOL_CONTRACT}`}
                 target="_blank"
                 rel="noreferrer"
-                className={styles.explorerLink}
-                title="View STRK20 pool contract on Voyager"
+                className={styles.contractLink}
+                title="View STRK20 pool contract on explorer"
               >
-                <span>Voyager</span>
-                <span aria-hidden="true">↗</span>
+                <code>{formatAddress(STRK20_POOL_CONTRACT)}</code>
+                <span className={styles.contractArrow} aria-hidden="true">↗</span>
               </a>
             </div>
           </div>

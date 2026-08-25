@@ -230,16 +230,17 @@ test("Phase 1: VerifiedDemo supports reduced motion, degradation wording, and cl
   assert.match(demoSource, /clearTimeout/);
   assert.doesNotMatch(demoSource, /setInterval/); // No auto-loop polling
 
-  // Degradation copy: Must use explicit unavailable wording
+  // Live read-only RPC verification & graceful degradation
+  assert.match(demoSource, /getPayment/);
+  assert.match(demoSource, /get_locked_by_token/);
   assert.match(
     demoSource,
     /Live verification unavailable\. Showing recorded Mainnet evidence\./,
   );
   assert.doesNotMatch(demoSource, /Historical record verified/);
-
-  // Trust line copy
-  assert.match(demoSource, /Real Mainnet transactions/);
-  assert.match(demoSource, /No wallet required/);
+  assert.doesNotMatch(demoSource, /WalletConnect/);
+  assert.doesNotMatch(demoSource, /requireWallet/);
+  assert.doesNotMatch(demoSource, /isConnected/);
 
   // Shell header and navigation
   assert.match(shellSource, /href="\/"/);

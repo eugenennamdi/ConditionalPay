@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import styles from '../console.module.css';
 import { useConsoleWallet } from '../_lib/ConsoleWalletContext';
 
@@ -81,10 +82,18 @@ export default function WalletConnect() {
             aria-haspopup="dialog"
             aria-label={`Connected wallet: ${formatAddress(address)}. Click for details.`}
           >
-            <span
-              className={chainStatus === 'MAINNET' ? styles.connectedDot : styles.warningDot}
-              aria-hidden="true"
-            />
+            {chainStatus === 'MAINNET' ? (
+              <Image
+                src="/tokens/strk.png"
+                alt=""
+                width={14}
+                height={14}
+                className={styles.connectedIcon}
+                aria-hidden="true"
+              />
+            ) : (
+              <span className={styles.warningDot} aria-hidden="true" />
+            )}
             <span className={styles.connectedAddress}>{formatAddress(address)}</span>
           </button>
 
@@ -98,9 +107,11 @@ export default function WalletConnect() {
               <div className={styles.popoverHeader}>
                 <div className={styles.popoverWalletTitleGroup}>
                   <span className={styles.popoverWalletName}>Ready Wallet</span>
-                  <span className={styles.popoverNetworkTag}>
-                    {chainStatus === 'MAINNET' ? 'Mainnet' : 'Wrong network'}
-                  </span>
+                  {chainStatus === 'WRONG_NETWORK' && (
+                    <span className={styles.popoverNetworkTag}>
+                      Wrong network
+                    </span>
+                  )}
                 </div>
               </div>
 
