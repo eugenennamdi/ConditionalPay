@@ -14,6 +14,7 @@ interface SettlementPreviewProps {
   walletConnected: boolean;
   onConnectWallet: () => void;
   walletAddress?: string;
+  errorMessage?: string;
 }
 
 function formatAddress(addr?: string): string {
@@ -32,10 +33,12 @@ export default function SettlementPreview({
   walletConnected,
   onConnectWallet,
   walletAddress,
+  errorMessage,
 }: SettlementPreviewProps) {
   const isClaim = mode === 'claim';
   const isExecutable = isClaim ? preflight.isClaimAvailable : preflight.isRefundAvailable;
   const blockedReason = isClaim ? preflight.claimBlockedReason : preflight.refundBlockedReason;
+  const isCancellation = errorMessage?.includes('Transaction cancelled in Ready Wallet');
 
   return (
     <div className={styles.settlementPreviewContainer}>
@@ -51,6 +54,17 @@ export default function SettlementPreview({
             : 'Review and execute your private refund into a shielded STRK20 note.'}
         </p>
       </div>
+
+      {errorMessage && isCancellation ? (
+        <div className={styles.cancellationNotice} role="status">
+          <span className={styles.cancellationTitle}>Transaction cancelled in Ready Wallet.</span>
+          <span className={styles.cancellationDetail}>No transaction was submitted.</span>
+        </div>
+      ) : errorMessage ? (
+        <div className={styles.previewAlert} role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
 
       {/* Preflight Parameter Cards */}
       <div className={styles.previewGrid}>

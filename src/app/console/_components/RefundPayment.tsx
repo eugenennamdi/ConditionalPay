@@ -228,11 +228,6 @@ export default function RefundPayment({
   if (step === 'REVIEWING' || step === 'AWAITING_WALLET') {
     return (
       <div className={styles.settlementContainer}>
-        {error && (
-          <div className={styles.errorAlert} role="alert">
-            {error}
-          </div>
-        )}
         {preflight && (
           <SettlementPreview
             mode="refund"
@@ -243,6 +238,7 @@ export default function RefundPayment({
             walletConnected={walletConnected}
             onConnectWallet={onConnectWallet}
             walletAddress={walletAddress}
+            errorMessage={error}
           />
         )}
       </div>

@@ -1604,6 +1604,14 @@
   border-bottom: 1px solid var(--line);
 }
 
+.previewTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.375rem;
+}
+
 .previewTitle {
   font-family: var(--font-mono-ui), 'Space Mono', monospace;
   font-size: 1.125rem;
@@ -1611,6 +1619,13 @@
   letter-spacing: 0.05em;
   color: var(--ink);
   margin: 0;
+}
+
+.previewSubtitle {
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.5;
 }
 
 .previewAlert {
@@ -1622,6 +1637,30 @@
   font-size: 0.8125rem;
   line-height: 1.4;
   margin-bottom: 1.25rem;
+}
+
+.cancellationNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--field);
+  border: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+}
+
+.cancellationTitle {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.cancellationDetail {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .previewGrid {
@@ -2425,7 +2464,6 @@
 @media (max-width: 640px) {
   .sectionBadgeRow,
   .settlementTitleRow,
-  .previewTitleRow,
   .handoffTitleRow,
   .resultTitleRow {
     flex-direction: column;
@@ -2456,7 +2494,6 @@
   }
   .sectionBadgeRow,
   .settlementTitleRow,
-  .previewTitleRow,
   .handoffTitleRow,
   .resultTitleRow {
     flex-direction: column;

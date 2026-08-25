@@ -518,11 +518,6 @@ export default function ClaimPayment({
   if (step === 'REVIEWING' || step === 'AWAITING_WALLET') {
     return (
       <div className={styles.settlementContainer}>
-        {error && (
-          <div className={styles.errorAlert} role="alert">
-            {error}
-          </div>
-        )}
         {preflight && (
           <SettlementPreview
             mode="claim"
@@ -534,6 +529,7 @@ export default function ClaimPayment({
             walletConnected={walletConnected}
             onConnectWallet={onConnectWallet}
             walletAddress={walletAddress}
+            errorMessage={error}
           />
         )}
       </div>

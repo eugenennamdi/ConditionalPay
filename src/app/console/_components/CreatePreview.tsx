@@ -19,17 +19,24 @@ export default function CreatePreview({
   onCreate,
   errorMessage,
 }: CreatePreviewProps) {
+  const isCancellation = errorMessage?.includes('Transaction cancelled in Ready Wallet');
+
   return (
     <div className={styles.previewContainer}>
       <div className={styles.previewHeader}>
         <h2 className={styles.previewTitle}>REVIEW CREATE</h2>
       </div>
 
-      {errorMessage && (
+      {errorMessage && isCancellation ? (
+        <div className={styles.cancellationNotice} role="status">
+          <span className={styles.cancellationTitle}>Transaction cancelled in Ready Wallet.</span>
+          <span className={styles.cancellationDetail}>No transaction was submitted.</span>
+        </div>
+      ) : errorMessage ? (
         <div className={styles.previewAlert} role="alert">
           {errorMessage}
         </div>
-      )}
+      ) : null}
 
       <div className={styles.previewGrid}>
         <div className={styles.previewItem}>

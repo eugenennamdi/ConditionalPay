@@ -825,3 +825,46 @@ test('14. Recipient-Address Stability Protection', async () => {
   assert.equal(capturedActions[0].recipient, normalizeFelt(account2));
 });
 
+test('14. UI Cancellation Notice: Inline Settlement Review Notice for Wallet Rejections', () => {
+  const claimSource = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/app/console/_components/ClaimPayment.tsx'),
+    'utf8',
+  );
+  const refundSource = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/app/console/_components/RefundPayment.tsx'),
+    'utf8',
+  );
+  const previewSource = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/app/console/_components/SettlementPreview.tsx'),
+    'utf8',
+  );
+  const cssSource = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/app/console/console.module.css'),
+    'utf8',
+  );
+
+  // Both Claim and Refund pass errorMessage into SettlementPreview without loose floating alerts
+  assert.match(claimSource, /<SettlementPreview[\s\S]*?errorMessage=\{error\}/);
+  assert.match(refundSource, /<SettlementPreview[\s\S]*?errorMessage=\{error\}/);
+
+  // SettlementPreview renders compact cancellation notice when user rejects in wallet
+  assert.match(previewSource, /isCancellation/);
+  assert.match(previewSource, /Transaction cancelled in Ready Wallet\./);
+  assert.match(previewSource, /No transaction was submitted\./);
+  assert.match(previewSource, /cancellationNotice/);
+
+  // CSS defines cancellation notice visual treatment
+  assert.match(cssSource, /\.cancellationNotice/);
+  assert.match(cssSource, /\.cancellationTitle/);
+  assert.match(cssSource, /\.cancellationDetail/);
+
+  // Rejection preserves state in ClaimPayment & RefundPayment: sets step back to REVIEWING without clearing credentials
+  assert.match(claimSource, /normalizeSettlementWalletError\(err, 'claim'\)/);
+  assert.match(claimSource, /setError\(normalizedError\)/);
+  assert.match(claimSource, /setStep\('REVIEWING'\)/);
+
+  assert.match(refundSource, /normalizeSettlementWalletError\(err, 'refund'\)/);
+  assert.match(refundSource, /setError\(normalizedError\)/);
+  assert.match(refundSource, /setStep\('REVIEWING'\)/);
+});
+
