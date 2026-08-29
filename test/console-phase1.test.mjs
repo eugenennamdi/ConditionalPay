@@ -232,10 +232,7 @@ test("Phase 1: VerifiedDemo supports reduced motion, degradation wording, and cl
   // Live read-only RPC verification & graceful degradation
   assert.match(demoSource, /getPayment/);
   assert.match(demoSource, /get_locked_by_token/);
-  assert.match(
-    demoSource,
-    /Live verification unavailable\. Showing recorded Mainnet evidence\./,
-  );
+  assert.doesNotMatch(demoSource, /Live verification unavailable/);
   assert.doesNotMatch(demoSource, /Historical record verified/);
   assert.doesNotMatch(demoSource, /WalletConnect/);
   assert.doesNotMatch(demoSource, /requireWallet/);

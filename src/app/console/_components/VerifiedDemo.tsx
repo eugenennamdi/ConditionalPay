@@ -31,9 +31,6 @@ export default function VerifiedDemo() {
   const [selectedId, setSelectedId] = useState<'paymentA' | 'paymentB'>('paymentA');
   const [replayStep, setReplayStep] = useState<number>(5); // 0..5, default completed (5)
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
-  const [verificationStatus, setVerificationStatus] = useState<
-    'idle' | 'verifying' | 'verified' | 'degraded'
-  >('idle');
   const [historicalLiability, setHistoricalLiability] = useState<string | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -111,10 +108,8 @@ export default function VerifiedDemo() {
         } catch {
           if (isMounted) setHistoricalLiability('0');
         }
-
-        if (isMounted) setVerificationStatus('verified');
       } catch {
-        if (isMounted) setVerificationStatus('degraded');
+        // Fallback to recorded evidence on RPC failure
       }
     }
 
@@ -137,11 +132,6 @@ export default function VerifiedDemo() {
           <p className={styles.demoDescription}>
             Replay the completed CLAIM and REFUND paths using real Starknet Mainnet transactions.
           </p>
-          {verificationStatus === 'degraded' && (
-            <div className={styles.demoDegradedNotice} role="status">
-              Live verification unavailable. Showing recorded Mainnet evidence.
-            </div>
-          )}
         </div>
       </section>
 
