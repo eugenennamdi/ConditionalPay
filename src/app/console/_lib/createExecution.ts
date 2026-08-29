@@ -12,7 +12,7 @@ import {
   type PaymentCreatedEvent,
   PaymentState,
 } from '@conditionalpay/sdk';
-import { walletV6, type ProviderInterface } from 'starknet';
+import { walletV6, RpcProvider, type ProviderInterface } from 'starknet';
 import type { WalletWithStarknetFeatures } from '@starknet-io/get-starknet-wallet-standard/features';
 import type { ClaimChoice, CreateFormData, PlannedCreate, RefundPreset } from './createTypes';
 
@@ -53,6 +53,45 @@ export function shouldActivateNavigationGuard(
   );
 }
 
+/**
+ * Canonical fallback Starknet Mainnet RPC endpoint.
+ */
+export const STARKNET_MAINNET_PUBLIC_RPC = 'https://rpc.starknet.lava.build';
+
+/**
+ * Resolves the appropriate Starknet Mainnet RPC URL from an environment string.
+ *
+ * Hierarchy:
+ * 1. Full URL: starts with http:// or https:// -> use directly
+ * 2. Non-empty, non-placeholder key -> construct Alchemy Mainnet endpoint
+ * 3. Otherwise -> active public fallback (https://rpc.starknet.lava.build)
+ */
+export function resolveMainnetRpcUrl(envValue?: string): string {
+  if (!envValue) return STARKNET_MAINNET_PUBLIC_RPC;
+  const trimmed = envValue.trim();
+  if (
+    !trimmed ||
+    trimmed === 'your_alchemy_key_here' ||
+    trimmed === 'undefined' ||
+    trimmed === 'null'
+  ) {
+    return STARKNET_MAINNET_PUBLIC_RPC;
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  return `https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/${trimmed}`;
+}
+
+/**
+ * Returns a configured Mainnet RPC provider with active fallback endpoints.
+ */
+export function getConsoleRpcProvider(customProvider?: ProviderInterface): ProviderInterface {
+  if (customProvider) return customProvider;
+  const nodeUrl = resolveMainnetRpcUrl(process.env.NEXT_PUBLIC_PROVIDER_URL);
+  return new RpcProvider({ nodeUrl });
+}
+
 export interface StarknetReceiptStatus {
   execution_status?: string;
   finality_status?: string;
@@ -66,6 +105,7 @@ export interface StarknetReceiptStatus {
  * 1. Must NOT be REVERTED in execution_status or legacy status.
  * 2. Must prove finality: finality_status must be 'ACCEPTED_ON_L2' or 'ACCEPTED_ON_L1'.
  * 3. If execution_status is present, it must be 'SUCCEEDED'.
+ * 4. ACCEPTED_ON_L2 is fully sufficient; L1 settlement is not required.
  */
 export function isReceiptAccepted(receipt: StarknetReceiptStatus | null | undefined): boolean {
   if (!receipt) return false;
@@ -76,9 +116,10 @@ export function isReceiptAccepted(receipt: StarknetReceiptStatus | null | undefi
   }
 
   // Finality check: Must be explicitly ACCEPTED_ON_L2 or ACCEPTED_ON_L1
+  const finality = receipt.finality_status || receipt.status;
   const isFinal =
-    receipt.finality_status === 'ACCEPTED_ON_L2' ||
-    receipt.finality_status === 'ACCEPTED_ON_L1';
+    finality === 'ACCEPTED_ON_L2' ||
+    finality === 'ACCEPTED_ON_L1';
 
   if (!isFinal) {
     return false;
@@ -98,6 +139,31 @@ export function isReceiptAccepted(receipt: StarknetReceiptStatus | null | undefi
 export function isReceiptReverted(receipt: StarknetReceiptStatus | null | undefined): boolean {
   if (!receipt) return false;
   return receipt.execution_status === 'REVERTED' || receipt.status === 'REVERTED';
+}
+
+/**
+ * Classifies whether an RPC error during getTransactionReceipt indicates normal indexing delay
+ * (e.g. transaction hash not found on node yet) versus a non-transient RPC configuration/auth error.
+ */
+export function isReceiptIndexingError(err: unknown): boolean {
+  if (!err) return true;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+
+  // Non-indexing errors: Auth errors, invalid endpoints, disabled APIs, bad requests
+  if (
+    msg.includes('must be authenticated') ||
+    msg.includes('-32600') ||
+    msg.includes('unauthorized') ||
+    msg.includes('forbidden') ||
+    msg.includes('api is no longer available') ||
+    msg.includes('-32000') ||
+    msg.includes('method not found') ||
+    msg.includes('-32601')
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 /**

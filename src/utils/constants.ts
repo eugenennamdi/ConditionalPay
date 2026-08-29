@@ -7,12 +7,34 @@ export const STRK20_POOL_MAINNET =
 export const STRK_MAINNET =
     "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
+function resolveRpcUrl(envValue?: string, network: 'mainnet' | 'sepolia' = 'mainnet'): string {
+    const trimmed = envValue ? envValue.trim() : '';
+    const isPlaceholderOrEmpty =
+        !trimmed ||
+        trimmed === 'your_alchemy_key_here' ||
+        trimmed === 'undefined' ||
+        trimmed === 'null';
+
+    if (isPlaceholderOrEmpty) {
+        return network === 'mainnet'
+            ? 'https://rpc.starknet.lava.build'
+            : 'https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/your_alchemy_key_here';
+    }
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed;
+    }
+
+    return `https://starknet-${network}.g.alchemy.com/starknet/version/rpc/v0_10/${trimmed}`;
+}
+
 // Frontend RPC providers, indexed. NEXT_PUBLIC_PROVIDER_URL is the public-client
-// RPC key segment documented in .env.example.
+// RPC URL or Alchemy key segment documented in .env.example.
 export const myFrontendProviders: ProviderInterface[] = [
-    new RpcProvider({ nodeUrl: "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/" + process.env.NEXT_PUBLIC_PROVIDER_URL }),
-    new RpcProvider({ nodeUrl: "https://starknet-testnet.public.blastapi.io/rpc/v0_7" }),
-    new RpcProvider({ nodeUrl: "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/" + process.env.NEXT_PUBLIC_PROVIDER_URL })];
+    new RpcProvider({ nodeUrl: resolveRpcUrl(process.env.NEXT_PUBLIC_PROVIDER_URL, 'mainnet') }),
+    new RpcProvider({ nodeUrl: resolveRpcUrl(process.env.NEXT_PUBLIC_PROVIDER_URL, 'sepolia') }),
+    new RpcProvider({ nodeUrl: resolveRpcUrl(process.env.NEXT_PUBLIC_PROVIDER_URL, 'sepolia') })
+];
 
 // Frontend provider indices where the STRK20 privacy pool is available, mapped to a
 // display name. Retained for wallet-network resolution in the future product UX.

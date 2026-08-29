@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RpcProvider } from 'starknet';
 import { getPayment } from '@conditionalpay/sdk';
 import styles from '../console.module.css';
 import {
@@ -13,18 +12,15 @@ import {
   EvidencePayment,
   EVIDENCE_TERMINAL_BLOCK,
 } from './verifiedDemoEvidence';
+import { getConsoleRpcProvider } from '../_lib/createExecution';
 
 function formatHash(hash: string): string {
   if (hash.length <= 18) return hash;
   return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
 }
 
-function getFallbackProvider(): RpcProvider {
-  const alchemyKey = process.env.NEXT_PUBLIC_PROVIDER_URL || '';
-  const nodeUrl = alchemyKey
-    ? `https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/${alchemyKey}`
-    : 'https://free-rpc.nethermind.io/mainnet-juno';
-  return new RpcProvider({ nodeUrl });
+function getFallbackProvider() {
+  return getConsoleRpcProvider();
 }
 
 export default function VerifiedDemo() {

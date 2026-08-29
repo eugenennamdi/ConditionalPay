@@ -15,8 +15,7 @@ import {
   CONDITIONAL_PAY_CONTRACT,
   STRK20_POOL_CONTRACT,
 } from './verifiedDemoEvidence';
-import { myFrontendProviders } from '@/utils/constants';
-import { RpcProvider } from 'starknet';
+import { getConsoleRpcProvider } from '../_lib/createExecution';
 
 export type ConsoleMode = 'create' | 'claim' | 'refund' | 'verifiedDemo';
 
@@ -32,9 +31,7 @@ function ConsoleInner() {
   const [pendingMode, setPendingMode] = useState<ConsoleMode | null>(null);
   const [isUnsavedModalOpen, setIsUnsavedModalOpen] = useState<boolean>(false);
 
-  const defaultProvider =
-    myFrontendProviders[0] ??
-    new RpcProvider({ nodeUrl: 'https://starknet-mainnet.public.blastapi.io/rpc/v0_7' });
+  const defaultProvider = getConsoleRpcProvider();
 
   useEffect(() => {
     function syncHash() {

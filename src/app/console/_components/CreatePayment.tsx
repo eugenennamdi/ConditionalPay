@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RpcProvider, type ProviderInterface } from 'starknet';
+import type { ProviderInterface } from 'starknet';
 import styles from '../console.module.css';
 import { useConsoleWallet } from '../_lib/ConsoleWalletContext';
 import { CreateFormData, CreateStep, PlannedCreate } from '../_lib/createTypes';
 import {
+  getConsoleRpcProvider,
   isReceiptAccepted,
+  isReceiptIndexingError,
   isReceiptReverted,
   normalizeWalletError,
   planCreatePayment,
@@ -17,7 +19,6 @@ import {
 import CreateForm from './CreateForm';
 import CreatePreview from './CreatePreview';
 import CredentialHandoff from './CredentialHandoff';
-import { myFrontendProviders } from '@/utils/constants';
 
 interface CreatePaymentProps {
   onUnsavedChange?: (hasUnsaved: boolean) => void;
@@ -45,14 +46,10 @@ export default function CreatePayment({
   const [isRechecking, setIsRechecking] = useState<boolean>(false);
 
   const submittingRef = useRef<boolean>(false);
-  const providerRef = useRef<ProviderInterface>(
-    customProvider ?? myFrontendProviders[0] ?? new RpcProvider({ nodeUrl: 'https://starknet-mainnet.public.blastapi.io/rpc/v0_7' }),
-  );
+  const providerRef = useRef<ProviderInterface>(getConsoleRpcProvider(customProvider));
 
   useEffect(() => {
-    if (customProvider) {
-      providerRef.current = customProvider;
-    }
+    providerRef.current = getConsoleRpcProvider(customProvider);
   }, [customProvider]);
 
   // Determine if credentials exist that require navigation protection
@@ -132,8 +129,13 @@ export default function CreatePayment({
             isAccepted = true;
             break;
           }
-        } catch {
-          // Transaction may not be indexed yet, keep polling
+        } catch (err: unknown) {
+          if (!isReceiptIndexingError(err)) {
+            // Non-transient RPC configuration or auth error: transition to STATUS_UNKNOWN immediately
+            setStep('STATUS_UNKNOWN');
+            return;
+          }
+          // Normal indexing delay, keep polling
         }
         await new Promise((r) => setTimeout(r, 3000));
       }
@@ -287,6 +289,7 @@ export default function CreatePayment({
 
       {(step === 'SUBMITTED' ||
         step === 'PENDING' ||
+        step === 'STATUS_UNKNOWN' ||
         step === 'ACCEPTED' ||
         step === 'VERIFYING' ||
         step === 'VERIFIED' ||
