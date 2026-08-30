@@ -13,7 +13,7 @@ ConditionalPay makes those assets programmable.
 - **Production Console:** [https://conditionalpay.vercel.app/console](https://conditionalpay.vercel.app/console)
 - **Mainnet Contract:** [`0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483`](https://voyager.online/contract/0x0166e31803cfab50383d5b636b86a5646233881fad3a2fb89354da63f6cdb483) *(Source Verified on Voyager)*
 - **Mainnet Evidence:** [MAINNET_EVIDENCE.md](./MAINNET_EVIDENCE.md)
-- **Demo Video:** *pending*
+- **3-Minute Mainnet Demo:** [https://youtu.be/MuCbdCYPIzc](https://youtu.be/MuCbdCYPIzc)
 
 ---
 

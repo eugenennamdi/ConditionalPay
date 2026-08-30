@@ -113,7 +113,7 @@ test("submission evidence identifies the canonical deployment and qualifying tra
     "0xde61c431a92dabc7b8672cd08cdce0b479b83ca261c0591992a84e6e7779b7",
     "0x441b1912620f38de58222ab3b8acc562d1c3d157f4f85a695e3042a969974aa",
   ]);
-  assert.equal(submission.demo_video, "");
+  assert.equal(submission.demo_video, "https://youtu.be/MuCbdCYPIzc");
   assert.equal(submission.demo_url, "https://conditionalpay.vercel.app");
 });
 
